@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -43,18 +46,21 @@ jobs:
 
       - name: Prepare artifact
         run: |
+          ARCH=$(echo "$TARGET" | sed 's/-unknown//')
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/devtools-runner dist/
+          cp target/$TARGET/release/devtools-runner dist/
           cp assets/org.kde.devtools.desktop dist/
           cp assets/org.kde.devtools.service dist/
           cp install.sh dist/
           cd dist
-          tar czf ../devtools-runner-${{ matrix.target }}.tar.gz *
+          tar czf ../devtools-runner-$ARCH.tar.gz *
+        env:
+          TARGET: ${{ matrix.target }}
 
       - name: Upload to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.event.release.tag_name }} \
-            devtools-runner-${{ matrix.target }}.tar.gz \
+            devtools-runner-*.tar.gz \
             --clobber
