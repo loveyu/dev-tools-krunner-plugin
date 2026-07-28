@@ -1,0 +1,18 @@
+[package]
+name = "devtools-runner"
+version = "0.1.0"
+edition = "2021"
+description = "A KRunner (Plasma 6) DBus runner for developer utilities."
+
+[[bin]]
+name = "devtools-runner"
+path = "src/main.rs"
+
+[dependencies]
+zbus = { version = "4", default-features = false, features = ["async-io", "blocking"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[profile.release]
+opt-level = 2
+codegen-units = 16
+strip = true

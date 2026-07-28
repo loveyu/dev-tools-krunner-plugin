@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.kde.devtools
+# @EXEC@ is replaced with the absolute binary path by install.sh
+Exec=@EXEC@
