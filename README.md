@@ -1,12 +1,10 @@
 # krunner-devtools
 
-一个 KDE Plasma 6 的 **KRunner Runner 插件**，把常用开发小工具（日期/时间戳等）整合进 KRunner：
+一个 KDE Plasma 6 的 **KRunner Runner 插件**，把常用开发小工具（日期/时间戳、随机字符串等）整合进 KRunner：
 
 > **Alt + Space → 输入 `date` → 看到多个结果 → 回车复制**
 
-当前为 **MVP**：实现 `date` / `time` 相关的时间输出，以及 `ts` / `tms` / `unix` 时间戳快捷命令，验证整条链路（KRunner → 匹配 → 多结果 → 一键复制）。后续按设计文档逐步加入 uuid / hash / json / 外部插件管理等能力。
-
-## 当前能力
+## 日期时间
 
 输入 `date` / `time`（或前缀 `da` / `tim`）显示：
 
@@ -19,12 +17,24 @@
 | ISO8601 | `2026-07-28T02:31:07Z` |
 | UTC 时间 | `2026-07-28 02:31:07 UTC` |
 
-快捷命令只返回单条结果，适合「打完即复制」：
+快捷命令只返回单条结果：
 
 | 命令 | 结果 |
 | --- | --- |
 | `ts` / `unix` | 秒级 Unix 时间戳 |
 | `tms` / `tsm` | 毫秒级 Unix 时间戳 |
+
+## 随机字符串
+
+输入 `rand` / `r` + 模式 + 长度（未指定长度默认 16 位），大小写不敏感：
+
+| 命令 | 模式 | 示例 |
+| --- | --- | --- |
+| `rand` / `r` / `r16` / `rand 32` | 字母数字 a-zA-Z0-9 | `r16` |
+| `rand+` / `r+16` / `rand+ 32` | 可见字符含符号 | `r+16` |
+| `rn` / `rn16` / `randn 8` | 仅数字 | `rn` |
+| `rc` / `rc16` / `randc 8` | 仅小写字母 | `rc` |
+| `rC` / `rC16` / `randC 8` | 仅大写字母（注意大写 `C`） | `rC` |
 
 **回车**复制选中项，并弹出桌面通知。
 
@@ -93,8 +103,10 @@ a(sssida{sv})
 
 | 文件 | 作用 |
 | --- | --- |
-| `src/main.rs` | Runner 主体：`org.kde.krunner1` 接口实现、匹配逻辑、复制/通知 |
-| `Cargo.toml` | 依赖：`zbus`(DBus)、`chrono`(时间) |
+| `src/main.rs` | Runner 主体：`org.kde.krunner1` 接口实现、调度分发 |
+| `src/time.rs` | 日期时间查询逻辑（COMMANDS / ITEMS / value_of 等） |
+| `src/rand.rs` | 随机字符串生成（RandMode / parse_rand_query 等） |
+| `Cargo.toml` | 依赖：`zbus`(DBus)、`chrono`(时间)、`rand`(随机) |
 | `assets/org.kde.devtools.desktop` | KRunner DBus-runner 元数据（`X-Plasma-API=DBus2` 等） |
 | `assets/org.kde.devtools.service` | D-Bus 激活服务模板（`@EXEC@` 由 install.sh 替换） |
 | `install.sh` | 编译 + 安装 + 重启 KRunner |
@@ -119,10 +131,4 @@ qdbus6 org.kde.devtools /runner
 
 修改 `src/main.rs` 后，重新 `./install.sh` 即可。
 
-## 路线图（对齐设计文档）
 
-- **MVP（当前）**：Runner 主体 + `date`/`time`，全链路打通。
-- **V1.1**：外部插件目录 `~/.local/share/krunner-devtools/plugins/<id>/` + `plugin.toml`，Runner 作为「插件管理器」fork/exec 外部可执行文件并解析其 JSON 输出；uuid / hash / base64 / json 等。
-- **V1.2+**：缓存、图标、alias、热加载；V2 的 `action` 扩展（open/url/exec）与富文本/图片。
-
-> V1.1 起的输出协议（`items[].title/value`，以及 V2 的 `subtitle/copy/icon/action`）已在设计文档中定义，本 Runner 届时只需把外部插件 JSON 转成本 Runner 的 `a(sssida{sv})` 结构即可，协议向后兼容。

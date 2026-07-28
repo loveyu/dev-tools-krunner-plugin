@@ -69,16 +69,19 @@ pub struct RandQuery {
     pub length: usize,
 }
 
+/// 默认长度：当用户只输入 `rand` / `r` 而不带数字时使用。
+const DEFAULT_LENGTH: usize = 16;
+
 /// 尝试从用户输入中解析出随机查询。不匹配时返回 `None`。
 ///
 /// 大小写不敏感，但 **`C`（大写）保留用于表示大写字母模式**——
 /// 所以 `rc` → Lower、`rC` / `RC` → Upper。
 ///
 /// 解析逻辑：跳过字母前缀（`r` 或 `rand`，大小写不敏感），然后看第一个
-/// 非字母非空格字符，根据它决定模式。
+/// 非字母非空格字符，根据它决定模式。未指定长度时默认 16。
 pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
     let raw = query.trim();
-    if raw.len() < 3 {
+    if raw.is_empty() {
         return None;
     }
 
@@ -88,10 +91,12 @@ pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
 
     // 跳过前缀后面的空白符，定位到第一个有效字符
     let after = raw[prefix_len..].trim_start();
-    let chars: Vec<char> = after.chars().collect();
-    if chars.is_empty() {
-        return None;
+    // 仅前缀（如 "rand" / "r"）→ 默认 16 位字母数字
+    if after.is_empty() {
+        return Some(RandQuery { mode: RandMode::AlphaNum, length: DEFAULT_LENGTH });
     }
+
+    let chars: Vec<char> = after.chars().collect();
 
     // 根据第一个字符确定模式和数值起点
     let (mode, num_offset) = match chars[0] {
@@ -105,10 +110,17 @@ pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
 
     // 空白作分隔符，跳过数值之前的空格
     let num_str: String = chars[num_offset..].iter().collect();
-    let length = num_str.trim_start().parse::<usize>().ok()?;
-    if length == 0 || length > 256 {
-        return None;
-    }
+    let num_str = num_str.trim_start();
+    // 有模式修饰符但无长度（如 "rand+" / "rn"）→ 默认 16
+    let length = if num_str.is_empty() {
+        DEFAULT_LENGTH
+    } else {
+        let n = num_str.parse::<usize>().ok()?;
+        if n == 0 || n > 256 {
+            return None;
+        }
+        n
+    };
 
     Some(RandQuery { mode, length })
 }
@@ -232,13 +244,22 @@ mod tests {
 
     #[test]
     fn parse_rand_invalid() {
-        assert!(parse_rand_query("r").is_none());
         assert!(parse_rand_query("ra").is_none());
-        assert!(parse_rand_query("rand").is_none());
         assert!(parse_rand_query("r0").is_none());
         assert!(parse_rand_query("r1000").is_none());
         assert!(parse_rand_query("xyz").is_none());
         assert!(parse_rand_query("ab").is_none());
+    }
+
+    #[test]
+    fn parse_rand_defaults() {
+        assert_mode!("r", RandMode::AlphaNum, 16);
+        assert_mode!("rand", RandMode::AlphaNum, 16);
+        assert_mode!("r+", RandMode::Visible, 16);
+        assert_mode!("rand+", RandMode::Visible, 16);
+        assert_mode!("rn", RandMode::Digits, 16);
+        assert_mode!("rc", RandMode::Lower, 16);
+        assert_mode!("rC", RandMode::Upper, 16);
     }
 
     #[test]
