@@ -14,5 +14,6 @@ X-KDE-PluginInfo-EnabledByDefault=true
 X-Plasma-API=DBus2
 X-Plasma-DBusRunner-Service=org.kde.devtools
 X-Plasma-DBusRunner-Path=/runner
-# Only invoke us for 2+ characters (we still filter by keyword ourselves).
-X-Plasma-Runner-Min-Letter-Count=2
+# Invoke us for 1+ characters. 短命令如 u、r 需要 1 字符的最低门槛。
+# 各模块内部已有自己的长度校验（如 time 要求 >= 2 字符）。
+X-Plasma-Runner-Min-Letter-Count=1
