@@ -4,7 +4,8 @@
 //! 我们的服务（bus name `org.kde.devtools`，对象路径 `/runner`），我们响应
 //! `org.kde.krunner1` 的方法调用。
 //!
-//! 功能：输入 `date` / `time`（或前缀）展示多种时间格式；`rand 16` / `r16` 等
+//! 功能：输入 `date` / `time` / `now`（或前缀）展示多种时间格式；
+//! `uuid` / `u` 生成 UUID v4；`rand 16` / `r16` 等
 //! 生成随机字符串；回车复制选中项并弹出桌面通知。
 //!
 //! match 结构在总线上的形状为
@@ -21,6 +22,7 @@
 
 mod rand;
 mod time;
+mod uuid;
 
 use std::collections::HashMap;
 use std::process::Command;
@@ -53,8 +55,8 @@ fn str_value(s: impl Into<String>) -> OwnedValue {
 }
 
 /// 根据 match id 反解出要复制的取值（被 Run 调用）。
-/// 支持 `date:<suffix>`（时间）和 `rand:<mode>:<length>`（随机字符串）
-/// 两种 id 格式。
+/// 支持 `date:<suffix>`（时间）、`rand:<mode>:<length>`（随机字符串）、
+/// `uuid:<mode>`（UUID）三种 id 格式。
 fn value_for_id(id: &str) -> Option<String> {
     if let Some(suffix) = id.strip_prefix("date:") {
         let now = Local::now();
@@ -64,6 +66,9 @@ fn value_for_id(id: &str) -> Option<String> {
     }
     if let Some(suffix) = id.strip_prefix("rand:") {
         return rand::value_for_rand_id(suffix);
+    }
+    if let Some(suffix) = id.strip_prefix("uuid:") {
+        return uuid::value_for_uuid_id(suffix);
     }
     None
 }
@@ -90,8 +95,13 @@ fn notify(summary: &str, body: &str) {
 /// `org.kde.krunner1` DBus 接口。
 #[zbus::interface(name = "org.kde.krunner1")]
 impl DevTools {
-    /// 返回某次查询匹配到的结果。优先尝试随机查询，其次为时间查询。
+    /// 返回某次查询匹配到的结果。优先尝试 UUID 查询，其次随机查询，最后为时间查询。
     fn Match(&self, query: &str) -> Vec<KMatch> {
+        if let Some(uuid_mode) = uuid::parse_uuid_query(query) {
+            let items = uuid::build_uuid_matches(&uuid_mode);
+            eprintln!("devtools-runner: Match {query:?} -> 1 uuid item");
+            return items;
+        }
         if let Some(rand) = rand::parse_rand_query(query) {
             let items = rand::build_rand_matches(&rand);
             eprintln!("devtools-runner: Match {query:?} -> 1 rand item");

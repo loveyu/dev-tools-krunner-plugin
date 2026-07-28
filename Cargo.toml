@@ -1,6 +1,6 @@
 [package]
 name = "devtools-runner"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A KRunner (Plasma 6) DBus runner for developer utilities."
 

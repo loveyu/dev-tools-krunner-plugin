@@ -6,7 +6,8 @@
 
 一个 **Plasma 6 KRunner 的 DBus runner**（Rust + `zbus`）。KRunner 调用我们暴露的
 session-bus 服务，我们对 `date`/`time` 查询返回多种时间格式，回车时把选中值复制到剪贴板。
-MVP 范围是内联的 date/time；设计文档（原始需求 / `README.md`）描述了后续的外部插件管理器架构。
+MVP 范围是内联的 date/time；后续扩展了 `rand`（随机字符串）、`uuid`（UUID v4 生成）。
+设计文档（原始需求 / `README.md`）描述了后续的外部插件管理器架构。
 
 目标平台：KDE Plasma 6 + Wayland（在 6.3.6 / Frameworks 6.13 上开发验证）。
 
@@ -92,6 +93,21 @@ D-Bus 激活 → `~/.local/share/dbus-1/services/org.kde.devtools.service`。
   一一对应；`#![allow(non_snake_case)]` 关掉相应 lint。
 - 阻塞式服务 = `ConnectionBuilder` 的 `.name().serve_at().build()` 之后接一个 sleep 循环。
   内部的 `async-io` 执行器在后台线程分发消息——**不需要手写 `receive_message` 循环**。
+
+## 新增一经理解查询（以 `parse_*_query` 为入口的模块，如 `rand`、`uuid`）
+
+这类模块的特点是输入格式统一为 `prefix[mode][length]`，解析过程全在各自模块内完成：
+
+- **文件命名**：`src/<功能词>.rs`，用 snake_case 小写（如 `rand.rs`、`uuid.rs`）。
+- **触发器命名习惯**：
+  - 长前缀：功能的英文全称或其缩写（`date`、`time`、`unix`、`rand`、`uuid`）。
+  - 短前缀：全称的首字母（`r` → rand、`u` → uuid、`ts` → timestamp）。
+  - 全大写短前缀（如 `UC` / `UUID`）表示「大写输出」变体。
+  - 单字符模式修饰符沿用 rand 的约定：`+` 可见字符、`n` 数字、`c` 小写/紧凑、`C` 大写。
+- **入口函数**：`parse_*_query(query: &str) → Option<QueryParams>`。
+- **构造结果**：`build_*_matches(params: &QueryParams) → Vec<KMatch>`。
+- **Run 时再生**：`value_for_*_id(suffix: &str) → Option<String>`（match id 前缀由 `main.rs` 的 `value_for_id` 调度）。
+- 在 `main.rs` 的 `Match` 里按调用优先级排列（越精确的越靠前）。
 
 ## 新增一种结果类型
 

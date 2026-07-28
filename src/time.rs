@@ -22,12 +22,14 @@ const COMMANDS: &[(&[&str], &[&str])] = &[
     ),
     (&["ts", "unix"], &["unix"]),
     (&["tms", "tsm"], &["unixms"]),
+    (&["now"], &["local", "hhmmss"]),
 ];
 
 /// 每一条结果的静态定义：`(id 后缀, 标题, 图标名)`。
 /// 具体取值在查询时计算，保证永远是当前值。
 const ITEMS: &[(&str, &str, &str)] = &[
     ("local", "当前时间", "clock"),
+    ("hhmmss", "当前时间 (仅时分秒)", "clock"),
     ("unix", "Unix 时间戳", "preferences-system-time"),
     ("unixms", "Unix 时间戳 (ms)", "preferences-system-time"),
     ("rfc3339", "RFC3339", "text-x-generic"),
@@ -39,6 +41,7 @@ const ITEMS: &[(&str, &str, &str)] = &[
 pub fn value_of(suffix: &str, now: &DateTime<Local>, utc: &DateTime<Utc>) -> String {
     match suffix {
         "local" => now.format("%Y-%m-%d %H:%M:%S").to_string(),
+        "hhmmss" => now.format("%H:%M:%S").to_string(),
         "unix" => now.timestamp().to_string(),
         "unixms" => now.timestamp_millis().to_string(),
         "rfc3339" => now.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
@@ -170,6 +173,28 @@ mod tests {
         assert_eq!(value_of("iso8601", &now, &utc), "2000-01-01T00:00:00Z");
         assert_eq!(value_of("utc", &now, &utc), "2000-01-01 00:00:00 UTC");
         assert_eq!(value_of("nope", &now, &utc), "");
+    }
+
+    #[test]
+    fn now_command_shows_local_and_hhmmss() {
+        assert_eq!(suffixes_for_query("now"), vec!["local", "hhmmss"]);
+        assert_eq!(suffixes_for_query("no"), vec!["local", "hhmmss"]);
+    }
+
+    #[test]
+    fn value_of_hhmmss() {
+        let (now, utc) = fixed();
+        // 本地时间的时分秒取决于时区，这里只验证格式为 HH:MM:SS
+        let v = value_of("hhmmss", &now, &utc);
+        assert_eq!(v.len(), 8);
+        assert_eq!(&v[2..3], ":");
+        assert_eq!(&v[5..6], ":");
+    }
+
+    #[test]
+    fn uppercase_queries_match() {
+        assert_eq!(suffixes_for_query("DATE").len(), 6);
+        assert_eq!(suffixes_for_query("NOW").len(), 2);
     }
 
     #[test]
