@@ -10,15 +10,19 @@ MVP 范围是内联的 date/time；设计文档（原始需求 / `README.md`）�
 
 目标平台：KDE Plasma 6 + Wayland（在 6.3.6 / Frameworks 6.13 上开发验证）。
 
+代码风格见 [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md)（核心：注释统一用中文）。
+
 ## 常用命令
 
 ```bash
 cargo build --release              # 构建（cargo 通过 rustup 装在 ~/.cargo）
+cargo test                         # 单元测试（纯函数：命令解析 / 时间格式化）
 ./install.sh                       # 构建 + 部署 + 重启 KRunner（每次改代码后重跑）
 ./target/release/devtools-runner   # 前台运行（stderr 输出日志），用于调试
 ```
 
-暂无测试。验证回路基于 DBus（见下文「调试/验证」）。
+单元测试覆盖纯函数逻辑（`suffixes_for_query` 的命令解析/精确优先、`value_of` 的格式化、
+`build_matches` 的排序与 id 前缀）；与 KRunner/DBus 的集成验证见下文「调试/验证」。
 
 ## 调试 / 验证
 
@@ -92,4 +96,17 @@ D-Bus 激活 → `~/.local/share/dbus-1/services/org.kde.devtools.service`。
 ## 新增一种结果类型
 
 在 `ITEMS`（`(id 后缀, 标题, 图标)`）里加一行，并在 `value_of` 加一个分支。
-match id 形如 `date:<后缀>`，Run 时由 `value_for_id` 重新计算（时间始终取当前）。无需改其他地方。
+match id 形如 `date:<后缀>`，Run 时由 `value_for_id` 重新计算（时间始终取当前）。
+
+## 新增一个触发命令
+
+触发词与「展示哪些行」的关系由 `COMMANDS`（`(触发关键词列表, item 后缀列表)`）驱动，而
+不再是一张写死的 `KEYWORDS`。匹配规则是双向前缀：查询等于/前缀于关键词，或关键词前缀于
+查询（`q == k || q.starts_with(k) || k.starts_with(&q)`）。多个命令同时命中时，后缀求并集
+去重，再由 `build_matches` 按 `ITEMS` 顺序输出。
+
+- 复用已有结果：直接把新关键词加进对应命令的关键词列表（如 `ts`/`unix` 共用 `["unix"]`，
+  `tms`/`tsm` 共用 `["unixms"]`）。
+- 别名若与别的关键词有前缀关系（`tsm` 以 `ts` 开头），靠「精确命中优先于前缀命中」解决：
+  只要存在任意精确命中，就只采用精确命中的命令，避免 `tsm` 连带触发秒级 `ts`。
+- 其余前缀歧义（如 `t` 同时命中 `time`/`ts`/`tms`）由后缀并集去重自然消化。
