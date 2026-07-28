@@ -12,6 +12,7 @@ path = "src/main.rs"
 zbus = { version = "4", default-features = false, features = ["async-io", "blocking"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rand = "0.8"
+uuid = { version = "1", features = ["v1", "v4", "v7"] }
 
 [profile.release]
 opt-level = 2

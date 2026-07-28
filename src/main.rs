@@ -5,7 +5,7 @@
 //! `org.kde.krunner1` 的方法调用。
 //!
 //! 功能：输入 `date` / `time` / `now`（或前缀）展示多种时间格式；
-//! `uuid` / `u` 生成 UUID v4；`rand 16` / `r16` 等
+//! `uuid` / `u` 生成 UUID v1/v4/v7；`rand 16` / `r16` 等
 //! 生成随机字符串；回车复制选中项并弹出桌面通知。
 //!
 //! match 结构在总线上的形状为
@@ -56,7 +56,7 @@ fn str_value(s: impl Into<String>) -> OwnedValue {
 
 /// 根据 match id 反解出要复制的取值（被 Run 调用）。
 /// 支持 `date:<suffix>`（时间）、`rand:<mode>:<length>`（随机字符串）、
-/// `uuid:<mode>`（UUID）三种 id 格式。
+/// `uuid:<version>:<format>`（UUID）三种 id 格式。
 fn value_for_id(id: &str) -> Option<String> {
     if let Some(suffix) = id.strip_prefix("date:") {
         let now = Local::now();
@@ -97,8 +97,8 @@ fn notify(summary: &str, body: &str) {
 impl DevTools {
     /// 返回某次查询匹配到的结果。优先尝试 UUID 查询，其次随机查询，最后为时间查询。
     fn Match(&self, query: &str) -> Vec<KMatch> {
-        if let Some(uuid_mode) = uuid::parse_uuid_query(query) {
-            let items = uuid::build_uuid_matches(&uuid_mode);
+        if let Some(uuid_query) = uuid::parse_uuid_query(query) {
+            let items = uuid::build_uuid_matches(&uuid_query);
             eprintln!("devtools-runner: Match {query:?} -> 1 uuid item");
             return items;
         }

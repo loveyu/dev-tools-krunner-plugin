@@ -1,19 +1,59 @@
 //! UUID 生成查询逻辑。
 //!
-//! 支持的输入格式（大小写不敏感，但 `C` 大写 C 敏感表示大写模式）：
+//! 支持的输入格式（大小写不敏感，`C` 大写敏感表示大写模式，数字表示版本）：
 //! - `uuid` / `u` — UUID v4 标准格式（小写，带连字符）
+//! - `u4` / `uuid4` — UUID v4（显式）
+//! - `u7` / `uuid7` — UUID v7（时间有序，含 Unix 毫秒时间戳）
+//! - `u1` / `uuid1` — UUID v1（基于时间 + 随机节点 ID）
 //! - `uc` / `uuidc` — UUID v4 紧凑格式（小写，无连字符）
 //! - `UC` / `uC` / `uuidC` — UUID v4 大写格式（大写，带连字符）
+//! - `u4c` / `u7C` 等 — 版本 + 格式可组合
 
 use std::collections::HashMap;
 
 use rand::Rng;
+use uuid::Uuid;
 
 use crate::{str_value, KMatch, CATEGORY, CATEGORY_RELEVANCE};
 
-/// UUID 的格式化模式。
+/// UUID 版本。
 #[derive(Debug, Clone, PartialEq)]
-pub enum UuidMode {
+pub enum UuidVersion {
+    V1,
+    V4,
+    V7,
+}
+
+impl UuidVersion {
+    fn as_str(&self) -> &'static str {
+        match self {
+            UuidVersion::V1 => "v1",
+            UuidVersion::V4 => "v4",
+            UuidVersion::V7 => "v7",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<UuidVersion> {
+        match s {
+            "v1" => Some(UuidVersion::V1),
+            "v4" => Some(UuidVersion::V4),
+            "v7" => Some(UuidVersion::V7),
+            _ => None,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            UuidVersion::V1 => "v1",
+            UuidVersion::V4 => "v4",
+            UuidVersion::V7 => "v7",
+        }
+    }
+}
+
+/// UUID 输出格式。
+#[derive(Debug, Clone, PartialEq)]
+pub enum UuidFormat {
     /// 标准格式（小写，带连字符）: `550e8400-e29b-41d4-a716-446655440000`
     Standard,
     /// 紧凑格式（小写，无连字符）: `550e8400e29b41d4a716446655440000`
@@ -22,79 +62,68 @@ pub enum UuidMode {
     Upper,
 }
 
-impl UuidMode {
-    pub fn as_str(&self) -> &'static str {
+impl UuidFormat {
+    fn as_str(&self) -> &'static str {
         match self {
-            UuidMode::Standard => "standard",
-            UuidMode::Compact => "compact",
-            UuidMode::Upper => "upper",
+            UuidFormat::Standard => "standard",
+            UuidFormat::Compact => "compact",
+            UuidFormat::Upper => "upper",
         }
     }
 
-    pub fn from_str(s: &str) -> Option<UuidMode> {
+    fn from_str(s: &str) -> Option<UuidFormat> {
         match s {
-            "standard" => Some(UuidMode::Standard),
-            "compact" => Some(UuidMode::Compact),
-            "upper" => Some(UuidMode::Upper),
+            "standard" => Some(UuidFormat::Standard),
+            "compact" => Some(UuidFormat::Compact),
+            "upper" => Some(UuidFormat::Upper),
             _ => None,
         }
     }
 
-    fn title(&self) -> &'static str {
-        match self {
-            UuidMode::Standard => "UUID v4 (小写，带连字符)",
-            UuidMode::Compact => "UUID v4 (紧凑格式，无连字符)",
-            UuidMode::Upper => "UUID v4 (大写，带连字符)",
+    fn suffix(&self, version: &UuidVersion) -> &'static str {
+        match (version, self) {
+            (_, UuidFormat::Standard) => "小写，带连字符",
+            (_, UuidFormat::Compact) => "紧凑格式，无连字符",
+            (_, UuidFormat::Upper) => "大写，带连字符",
         }
     }
 }
 
-/// 生成原始的 UUID v4 字节（16 字节）。
-/// 按 RFC 9562 设置 version (4) 和 variant (10xx) 位。
-fn generate_uuid_bytes() -> [u8; 16] {
-    let mut rng = rand::thread_rng();
-    let mut bytes = [0u8; 16];
-    rng.fill(&mut bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    bytes
+/// 解析后的 UUID 查询参数。
+pub struct UuidQuery {
+    pub version: UuidVersion,
+    pub format: UuidFormat,
 }
 
-/// 根据模式把 UUID 字节格式化为目标字符串。
-pub fn format_uuid(bytes: &[u8; 16], mode: &UuidMode) -> String {
-    match mode {
-        UuidMode::Standard => {
-            let s: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-            format!(
-                "{}-{}-{}-{}-{}",
-                &s[0..8],
-                &s[8..12],
-                &s[12..16],
-                &s[16..20],
-                &s[20..32],
-            )
+/// 根据版本和格式生成 UUID 字符串。
+pub fn generate_uuid(version: &UuidVersion, format: &UuidFormat) -> String {
+    let uuid = match version {
+        UuidVersion::V1 => {
+            let mut node_id = [0u8; 6];
+            rand::thread_rng().fill(&mut node_id);
+            Uuid::now_v1(&node_id)
         }
-        UuidMode::Compact => bytes.iter().map(|b| format!("{b:02x}")).collect(),
-        UuidMode::Upper => {
-            let s: String = bytes.iter().map(|b| format!("{b:02X}")).collect();
-            format!(
-                "{}-{}-{}-{}-{}",
-                &s[0..8],
-                &s[8..12],
-                &s[12..16],
-                &s[16..20],
-                &s[20..32],
-            )
-        }
+        UuidVersion::V4 => Uuid::new_v4(),
+        UuidVersion::V7 => Uuid::now_v7(),
+    };
+    match format {
+        UuidFormat::Standard => uuid.hyphenated().to_string(),
+        UuidFormat::Compact => uuid.simple().to_string(),
+        UuidFormat::Upper => uuid.hyphenated().to_string().to_uppercase(),
     }
 }
 
 /// 尝试从用户输入中解析出 UUID 查询。不匹配时返回 `None`。
 ///
-/// 大小写不敏感（前缀 `u` / `uuid` 匹配时忽略大小写），
-/// 但 `C`（大写）保留用于表示大写模式——`uc` → Compact、`UC` / `uC` → Upper。
-/// 额外规则：全部大写的完整查询（如 `UUID`，无修饰符余留）视为 Upper。
-pub fn parse_uuid_query(query: &str) -> Option<UuidMode> {
+/// 解析规则（基于字符，非字节）：
+/// 1. 前缀必须是 `u` 或 `uuid`（大小写不敏感）
+/// 2. 前缀之后：
+///    - 空 → v4 Standard
+///    - 数字 '1'/'4'/'7' → 对应版本，可选后续格式修饰符
+///    - 'c' → v4 Compact
+///    - 'C' → v4 Upper
+/// 3. 额外规则：仅前缀且全大写（如 `UUID`）→ v4 Upper
+pub fn parse_uuid_query(query: &str) -> Option<UuidQuery> {
     let raw = query.trim();
     if raw.is_empty() {
         return None;
@@ -111,42 +140,86 @@ pub fn parse_uuid_query(query: &str) -> Option<UuidMode> {
 
     let after = raw[prefix_len..].trim();
 
-    // 无修饰符：若原始查询全部为大写（如 `UUID`）则视为 Upper，否则 Standard
-    if after.is_empty() {
-        if raw.len() > 1 && raw.chars().all(|c| c.is_ascii_uppercase()) {
-            return Some(UuidMode::Upper);
+    parse_version_format(after).or_else(|| {
+        // 无修饰符：全大写 → v4 Upper，否则 v4 Standard
+        if after.is_empty() {
+            if raw.chars().all(|c| c.is_ascii_uppercase()) && raw.len() > 1 {
+                Some(UuidQuery {
+                    version: UuidVersion::V4,
+                    format: UuidFormat::Upper,
+                })
+            } else {
+                Some(UuidQuery {
+                    version: UuidVersion::V4,
+                    format: UuidFormat::Standard,
+                })
+            }
+        } else {
+            None
         }
-        return Some(UuidMode::Standard);
+    })
+}
+
+/// 解析 `after` 部分的 版本号 + 格式修饰符。
+/// 支持：`"7"`, `"4c"`, `"7C"`, `"c"`, `"C"` 等。
+fn parse_version_format(after: &str) -> Option<UuidQuery> {
+    if after.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = after.chars().collect();
+    let mut pos = 0usize;
+    let mut version = None;
+    let mut format = None;
+
+    // 解析版本数字（0-1 位）
+    if pos < chars.len() && chars[pos].is_ascii_digit() {
+        version = Some(match chars[pos] {
+            '1' => UuidVersion::V1,
+            '4' => UuidVersion::V4,
+            '7' => UuidVersion::V7,
+            _ => return None,
+        });
+        pos += 1;
     }
 
-    let first = after.chars().next()?;
-    match first {
-        'c' => {
-            if after[first.len_utf8()..].trim().is_empty() {
-                return Some(UuidMode::Compact);
-            }
-            None
+    // 解析格式修饰符（0-1 位）
+    if pos < chars.len() {
+        match chars[pos] {
+            'c' => format = Some(UuidFormat::Compact),
+            'C' => format = Some(UuidFormat::Upper),
+            _ => return None,
         }
-        'C' => {
-            if after[first.len_utf8()..].trim().is_empty() {
-                return Some(UuidMode::Upper);
-            }
-            None
-        }
-        _ => None,
+        pos += 1;
     }
+
+    // 不允许余留字符
+    if pos != chars.len() {
+        return None;
+    }
+
+    Some(UuidQuery {
+        version: version.unwrap_or(UuidVersion::V4),
+        format: format.unwrap_or(UuidFormat::Standard),
+    })
 }
 
 /// 构造 UUID 查询对应的 KRunner 结果（仅单条 match）。
-pub fn build_uuid_matches(mode: &UuidMode) -> Vec<KMatch> {
-    let bytes = generate_uuid_bytes();
-    let value = format_uuid(&bytes, mode);
+pub fn build_uuid_matches(query: &UuidQuery) -> Vec<KMatch> {
+    let value = generate_uuid(&query.version, &query.format);
     let mut props = HashMap::new();
     props.insert("subtext".to_string(), str_value(value.clone()));
     props.insert("category".to_string(), str_value(CATEGORY));
 
-    let id = format!("uuid:{}", mode.as_str());
-    let title = mode.title().to_string();
+    let id = format!(
+        "uuid:{}:{}",
+        query.version.as_str(),
+        query.format.as_str()
+    );
+    let title = format!(
+        "UUID {} ({})",
+        query.version.label(),
+        query.format.suffix(&query.version)
+    );
 
     vec![(
         id,
@@ -158,104 +231,155 @@ pub fn build_uuid_matches(mode: &UuidMode) -> Vec<KMatch> {
     )]
 }
 
-/// 根据 UUID id 后缀（`"<mode>"` 格式）重新生成 UUID。
+/// 根据 UUID id 后缀（`"<version>:<format>"` 格式）重新生成 UUID。
 pub fn value_for_uuid_id(suffix: &str) -> Option<String> {
-    let mode = UuidMode::from_str(suffix)?;
-    let bytes = generate_uuid_bytes();
-    Some(format_uuid(&bytes, &mode))
+    let (version_str, format_str) = suffix.rsplit_once(':')?;
+    let version = UuidVersion::from_str(version_str)?;
+    let format = UuidFormat::from_str(format_str)?;
+    Some(generate_uuid(&version, &format))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    macro_rules! assert_mode {
-        ($query:expr, $mode:pat) => {
-            let m = parse_uuid_query($query).expect(concat!("parse failed: ", $query));
+    macro_rules! assert_query {
+        ($query:expr, $ver:pat, $fmt:pat) => {
+            let q = parse_uuid_query($query).expect(concat!("parse failed: ", $query));
             assert!(
-                matches!(m, $mode),
-                "{:?}: expected mode {}, got {:?}",
+                matches!(q.version, $ver),
+                "{:?}: expected version {}, got {:?}",
                 $query,
-                stringify!($mode),
-                m
+                stringify!($ver),
+                q.version
+            );
+            assert!(
+                matches!(q.format, $fmt),
+                "{:?}: expected format {}, got {:?}",
+                $query,
+                stringify!($fmt),
+                q.format
             );
         };
     }
 
     #[test]
-    fn parse_uuid_standard() {
-        assert_mode!("u", UuidMode::Standard);
-        assert_mode!("uuid", UuidMode::Standard);
-        assert_mode!("Uuid", UuidMode::Standard);
+    fn parse_default() {
+        assert_query!("u", UuidVersion::V4, UuidFormat::Standard);
+        assert_query!("uuid", UuidVersion::V4, UuidFormat::Standard);
     }
 
     #[test]
-    fn parse_uuid_compact() {
-        assert_mode!("uc", UuidMode::Compact);
-        assert_mode!("uuidc", UuidMode::Compact);
-        assert_mode!("Uc", UuidMode::Compact);
+    fn parse_explicit_version() {
+        assert_query!("u4", UuidVersion::V4, UuidFormat::Standard);
+        assert_query!("uuid4", UuidVersion::V4, UuidFormat::Standard);
+        assert_query!("u7", UuidVersion::V7, UuidFormat::Standard);
+        assert_query!("uuid7", UuidVersion::V7, UuidFormat::Standard);
+        assert_query!("u1", UuidVersion::V1, UuidFormat::Standard);
+        assert_query!("uuid1", UuidVersion::V1, UuidFormat::Standard);
     }
 
     #[test]
-    fn parse_uuid_upper() {
-        assert_mode!("UC", UuidMode::Upper);
-        assert_mode!("uC", UuidMode::Upper);
-        assert_mode!("uuidC", UuidMode::Upper);
-        assert_mode!("UUID", UuidMode::Upper);
+    fn parse_compact() {
+        assert_query!("uc", UuidVersion::V4, UuidFormat::Compact);
+        assert_query!("uuidc", UuidVersion::V4, UuidFormat::Compact);
     }
 
     #[test]
-    fn parse_uuid_invalid() {
+    fn parse_upper() {
+        assert_query!("UC", UuidVersion::V4, UuidFormat::Upper);
+        assert_query!("uC", UuidVersion::V4, UuidFormat::Upper);
+        assert_query!("uuidC", UuidVersion::V4, UuidFormat::Upper);
+        assert_query!("UUID", UuidVersion::V4, UuidFormat::Upper);
+    }
+
+    #[test]
+    fn parse_version_plus_format() {
+        assert_query!("u4c", UuidVersion::V4, UuidFormat::Compact);
+        assert_query!("u7c", UuidVersion::V7, UuidFormat::Compact);
+        assert_query!("u1c", UuidVersion::V1, UuidFormat::Compact);
+        assert_query!("u4C", UuidVersion::V4, UuidFormat::Upper);
+        assert_query!("u7C", UuidVersion::V7, UuidFormat::Upper);
+        assert_query!("u1C", UuidVersion::V1, UuidFormat::Upper);
+    }
+
+    #[test]
+    fn parse_case_insensitive_prefix() {
+        assert_query!("U", UuidVersion::V4, UuidFormat::Standard);
+        assert_query!("U7", UuidVersion::V7, UuidFormat::Standard);
+        assert_query!("U4c", UuidVersion::V4, UuidFormat::Compact);
+    }
+
+    #[test]
+    fn parse_invalid() {
         assert!(parse_uuid_query("ua").is_none());
         assert!(parse_uuid_query("u z").is_none());
         assert!(parse_uuid_query("xyz").is_none());
         assert!(parse_uuid_query("ud").is_none());
         assert!(parse_uuid_query("uid").is_none());
+        assert!(parse_uuid_query("u9").is_none());
+        assert!(parse_uuid_query("u47").is_none());
+        assert!(parse_uuid_query("u4x").is_none());
     }
 
     #[test]
-    fn format_uuid_length() {
-        let bytes = generate_uuid_bytes();
-        let s = format_uuid(&bytes, &UuidMode::Standard);
+    fn generate_v4() {
+        let s = generate_uuid(&UuidVersion::V4, &UuidFormat::Standard);
         assert_eq!(s.len(), 36);
         assert!(s.contains('-'));
-        assert!(s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
+        // v4 版本位 = 4
+        assert_eq!(&s[14..15], "4");
+    }
 
-        let s = format_uuid(&bytes, &UuidMode::Compact);
+    #[test]
+    fn generate_v7() {
+        let s = generate_uuid(&UuidVersion::V7, &UuidFormat::Standard);
+        assert_eq!(s.len(), 36);
+        assert!(s.contains('-'));
+        // v7 版本位 = 7
+        assert_eq!(&s[14..15], "7");
+    }
+
+    #[test]
+    fn generate_v1() {
+        let s = generate_uuid(&UuidVersion::V1, &UuidFormat::Standard);
+        assert_eq!(s.len(), 36);
+        assert!(s.contains('-'));
+        // v1 版本位 = 1
+        assert_eq!(&s[14..15], "1");
+    }
+
+    #[test]
+    fn generate_compact() {
+        let s = generate_uuid(&UuidVersion::V4, &UuidFormat::Compact);
         assert_eq!(s.len(), 32);
         assert!(!s.contains('-'));
-        assert!(s.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 
-        let s = format_uuid(&bytes, &UuidMode::Upper);
+    #[test]
+    fn generate_upper() {
+        let s = generate_uuid(&UuidVersion::V4, &UuidFormat::Upper);
         assert_eq!(s.len(), 36);
         assert!(s.contains('-'));
         assert!(s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'));
     }
 
     #[test]
-    fn uuid_version_and_variant() {
-        // 验证生成的 UUID 是 v4 版本和 RFC 变体
-        let bytes = generate_uuid_bytes();
-        assert_eq!(bytes[6] >> 4, 4, "UUID 版本字段应为 4");
-        assert!(bytes[8] >> 6 == 2, "UUID 变体字段应为 10xx");
-    }
-
-    #[test]
-    fn generate_uuid_different_each_call() {
-        let a = generate_uuid_bytes();
-        let b = generate_uuid_bytes();
+    fn generate_different_each_call() {
+        let a = generate_uuid(&UuidVersion::V4, &UuidFormat::Standard);
+        let b = generate_uuid(&UuidVersion::V4, &UuidFormat::Standard);
         assert_ne!(a, b);
     }
 
     #[test]
-    fn uuid_id_roundtrip() {
-        let m = parse_uuid_query("u").unwrap();
-        let matches = build_uuid_matches(&m);
+    fn id_roundtrip() {
+        let q = parse_uuid_query("u7c").unwrap();
+        let matches = build_uuid_matches(&q);
         let id = &matches[0].0;
-        assert!(id.starts_with("uuid:standard"));
+        assert!(id.starts_with("uuid:v7:compact"));
         let suffix = id.strip_prefix("uuid:").unwrap();
         let value = value_for_uuid_id(suffix).unwrap();
-        assert_eq!(value.len(), 36);
-        assert!(value.chars().any(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+        assert_eq!(value.len(), 32);
+        assert!(!value.contains('-'));
     }
 }
