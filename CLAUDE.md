@@ -18,9 +18,19 @@ MVP 范围是内联的 date/time；后续扩展了 `rand`（随机字符串）�
 ```bash
 cargo build --release              # 构建（cargo 通过 rustup 装在 ~/.cargo）
 cargo test                         # 单元测试（纯函数：命令解析 / 时间格式化）
+cargo fmt                          # 按 rustfmt 标准格式化（会改写文件）
+cargo clippy --all-targets -- -D warnings   # lint，警告当错误
 ./install.sh                       # 构建 + 部署 + 重启 KRunner（每次改代码后重跑）
 ./target/release/devtools-runner   # 前台运行（stderr 输出日志），用于调试
 ```
+
+提交前三件套（格式化 + lint + 测试，按顺序跑一遍）：
+
+```bash
+cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+> `rustfmt` / `clippy` 不在 rustup minimal profile 里，缺失时先 `rustup component add rustfmt clippy`。
 
 单元测试覆盖纯函数逻辑（`suffixes_for_query` 的命令解析/精确优先、`value_of` 的格式化、
 `build_matches` 的排序与 id 前缀）；与 KRunner/DBus 的集成验证见下文「调试/验证」。
