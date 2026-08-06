@@ -87,13 +87,22 @@ pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
 
     // 确认以 `r` 或 `rand` 开头（大小写不敏感）
     let q = raw.to_lowercase();
-    let prefix_len = if q.starts_with("rand") { 4 } else if q.starts_with('r') { 1 } else { return None; };
+    let prefix_len = if q.starts_with("rand") {
+        4
+    } else if q.starts_with('r') {
+        1
+    } else {
+        return None;
+    };
 
     // 跳过前缀后面的空白符，定位到第一个有效字符
     let after = raw[prefix_len..].trim_start();
     // 仅前缀（如 "rand" / "r"）→ 默认 16 位字母数字
     if after.is_empty() {
-        return Some(RandQuery { mode: RandMode::AlphaNum, length: DEFAULT_LENGTH });
+        return Some(RandQuery {
+            mode: RandMode::AlphaNum,
+            length: DEFAULT_LENGTH,
+        });
     }
 
     let chars: Vec<char> = after.chars().collect();

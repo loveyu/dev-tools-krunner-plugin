@@ -87,9 +87,7 @@ pub fn suffixes_for_query(query: &str) -> Vec<&'static str> {
     if q.len() < 2 {
         return Vec::new();
     }
-    let exact_hit = COMMANDS
-        .iter()
-        .any(|(kws, _)| kws.iter().any(|k| q == *k));
+    let exact_hit = COMMANDS.iter().any(|(kws, _)| kws.iter().any(|k| q == *k));
     let mut matched: Vec<&str> = Vec::new();
     for (keywords, suffixes) in COMMANDS {
         let hit = if exact_hit {
@@ -200,7 +198,10 @@ mod tests {
     #[test]
     fn build_matches_orders_like_items_and_prefixes_ids() {
         let matches = build_matches(&["unixms", "unix", "missing"]);
-        let ids: Vec<&str> = matches.iter().map(|(id, _, _, _, _, _)| id.as_str()).collect();
+        let ids: Vec<&str> = matches
+            .iter()
+            .map(|(id, _, _, _, _, _)| id.as_str())
+            .collect();
         assert_eq!(ids, vec!["date:unix", "date:unixms"]);
     }
 }

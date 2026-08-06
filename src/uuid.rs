@@ -210,11 +210,7 @@ pub fn build_uuid_matches(query: &UuidQuery) -> Vec<KMatch> {
     props.insert("subtext".to_string(), str_value(value.clone()));
     props.insert("category".to_string(), str_value(CATEGORY));
 
-    let id = format!(
-        "uuid:{}:{}",
-        query.version.as_str(),
-        query.format.as_str()
-    );
+    let id = format!("uuid:{}:{}", query.version.as_str(), query.format.as_str());
     let title = format!(
         "UUID {} ({})",
         query.version.label(),
@@ -361,7 +357,9 @@ mod tests {
         let s = generate_uuid(&UuidVersion::V4, &UuidFormat::Upper);
         assert_eq!(s.len(), 36);
         assert!(s.contains('-'));
-        assert!(s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'));
+        assert!(s
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'));
     }
 
     #[test]
