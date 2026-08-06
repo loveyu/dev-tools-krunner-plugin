@@ -7,7 +7,7 @@ Comment[zh_CN]=开发工具：日期、时间戳、RFC3339、ISO8601 等。
 Icon=utilities-terminal
 X-KDE-PluginInfo-Author=hu_zhi_yu
 X-KDE-PluginInfo-Name=org.kde.devtools
-X-KDE-PluginInfo-Version=0.2.0
+X-KDE-PluginInfo-Version=0.3.0
 X-KDE-PluginInfo-License=MIT
 X-KDE-PluginInfo-EnabledByDefault=true
 # Plasma 6 DBus runner (DBus2) protocol:
