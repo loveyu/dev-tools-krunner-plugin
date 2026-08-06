@@ -6,7 +6,9 @@
 //!
 //! 功能：输入 `date` / `time` / `now`（或前缀）展示多种时间格式；
 //! `uuid` / `u` 生成 UUID v1/v4/v7；`rand 16` / `r16` 等
-//! 生成随机字符串；回车复制选中项并弹出桌面通知。
+//! 生成随机字符串；直接输入**时间戳**（`1722931200` / `1722931200000`）
+//! 或**日期字符串**（`2024-08-06 12:00:00` / RFC3339 等）则双向互转；
+//! 回车复制选中项并弹出桌面通知。
 //!
 //! match 结构在总线上的形状为
 //! `(Id, Text, IconName, CategoryRelevance, Relevance, Properties)`，
@@ -20,6 +22,7 @@
 
 #![allow(non_snake_case)]
 
+mod convert;
 mod rand;
 mod time;
 mod uuid;
@@ -43,21 +46,31 @@ const CATEGORY: &str = "DevTools";
 const CATEGORY_RELEVANCE: i32 = 100;
 
 /// `(Id, Text, IconName, CategoryRelevance, Relevance, Properties)` → DBus `a(sssida{sv})`。
-type KMatch = (String, String, String, i32, f64, HashMap<String, OwnedValue>);
+type KMatch = (
+    String,
+    String,
+    String,
+    i32,
+    f64,
+    HashMap<String, OwnedValue>,
+);
 
 struct DevTools;
 
 /// 把字符串包装成 `a{sv}` 字典里用的 `OwnedValue`（DBus variant `v`）。
 /// `OwnedValue` 只对基础类型实现了 `From`，因此这里经由 `Value` 中转。
 fn str_value(s: impl Into<String>) -> OwnedValue {
-    OwnedValue::try_from(Value::from(s.into()))
-        .expect("OwnedValue::try_from(Value) is infallible")
+    OwnedValue::try_from(Value::from(s.into())).expect("OwnedValue::try_from(Value) is infallible")
 }
 
 /// 根据 match id 反解出要复制的取值（被 Run 调用）。
 /// 支持 `date:<suffix>`（时间）、`rand:<mode>:<length>`（随机字符串）、
-/// `uuid:<version>:<format>`（UUID）三种 id 格式。
+/// `uuid:<version>:<format>`（UUID）、`conv:<kind>:<secs>:<fmt>`（时间戳 ↔ 时间
+/// 字符串互转）四种 id 格式。
 fn value_for_id(id: &str) -> Option<String> {
+    if let Some(suffix) = id.strip_prefix("conv:") {
+        return convert::value_for_convert_id(suffix);
+    }
     if let Some(suffix) = id.strip_prefix("date:") {
         let now = Local::now();
         let utc = Utc::now();
@@ -85,7 +98,14 @@ fn copy_to_clipboard(text: &str) {
 /// 弹出一个桌面通知。
 fn notify(summary: &str, body: &str) {
     if let Err(e) = Command::new("notify-send")
-        .args(["--app-name", "DevTools", "--icon", "edit-copy", summary, body])
+        .args([
+            "--app-name",
+            "DevTools",
+            "--icon",
+            "edit-copy",
+            summary,
+            body,
+        ])
         .spawn()
     {
         eprintln!("devtools-runner: notify-send failed: {e}");
@@ -95,8 +115,18 @@ fn notify(summary: &str, body: &str) {
 /// `org.kde.krunner1` DBus 接口。
 #[zbus::interface(name = "org.kde.krunner1")]
 impl DevTools {
-    /// 返回某次查询匹配到的结果。优先尝试 UUID 查询，其次随机查询，最后为时间查询。
+    /// 返回某次查询匹配到的结果。
+    /// 优先按输入「形状」识别时间戳 ↔ 时间字符串互转（裸数字 / 日期串），
+    /// 其次 UUID、随机字符串，最后回落到关键词驱动的时间查询。
     fn Match(&self, query: &str) -> Vec<KMatch> {
+        if let Some(convert_query) = convert::parse_convert_query(query) {
+            let items = convert::build_convert_matches(&convert_query);
+            eprintln!(
+                "devtools-runner: Match {query:?} -> {} convert item(s)",
+                items.len()
+            );
+            return items;
+        }
         if let Some(uuid_query) = uuid::parse_uuid_query(query) {
             let items = uuid::build_uuid_matches(&uuid_query);
             eprintln!("devtools-runner: Match {query:?} -> 1 uuid item");
@@ -109,7 +139,10 @@ impl DevTools {
         }
         let suffixes = time::suffixes_for_query(query);
         let items = time::build_matches(&suffixes);
-        eprintln!("devtools-runner: Match {query:?} -> {} item(s)", items.len());
+        eprintln!(
+            "devtools-runner: Match {query:?} -> {} item(s)",
+            items.len()
+        );
         items
     }
 
