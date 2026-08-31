@@ -38,9 +38,14 @@ jobs:
         with:
           version: 11.18.0
           runtime: node@26
-          working-directory: web/devtools-ui
+          package-json-file: web/devtools-ui/package.json
           cache: true
-          require-lockfile: true
+          cache-dependency-path: web/devtools-ui/pnpm-lock.yaml
+          install: false
+
+      - name: Install frontend dependencies
+        working-directory: web/devtools-ui
+        run: pnpm install --frozen-lockfile
 
       - name: Run frontend quality gate
         working-directory: web/devtools-ui
