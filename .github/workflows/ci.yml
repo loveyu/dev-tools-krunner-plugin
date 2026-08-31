@@ -67,3 +67,36 @@ jobs:
 
       - name: Build release workspace
         run: cargo build --release --workspace --locked
+
+  windows-worker:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm 11 and Node 26
+        uses: pnpm/setup@v2
+        with:
+          version: 11.18.0
+          runtime: node@26
+          package-json-file: web/devtools-ui/package.json
+          cache: true
+          cache-dependency-path: web/devtools-ui/pnpm-lock.yaml
+          install: false
+
+      - name: Build frontend bundle
+        working-directory: web/devtools-ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Check Windows Worker
+        run: cargo check -p devtools-workerd --locked
+
+      - name: Lint Windows Worker
+        run: cargo clippy -p devtools-workerd --all-targets --locked -- -D warnings

@@ -5,9 +5,20 @@ import type {
 } from '../tools/converter/types';
 import type { MediaCapabilities, MediaOperation, OcrOptions } from '../tools/media/types';
 
+export type ThemeMode = 'system' | 'light' | 'dark';
+export type LanguageMode = 'system' | 'zh-CN' | 'zh-TW' | 'en-US';
+
 export type Settings = {
   readonly showTray: boolean;
   readonly autostart: boolean;
+  readonly globalShortcutEnabled: boolean;
+  readonly globalShortcut: string;
+  readonly quickInputEnabled: boolean;
+  readonly quickInputShortcut: string;
+  readonly quickInputWidth: number;
+  readonly quickInputHeight: number;
+  readonly theme: ThemeMode;
+  readonly language: LanguageMode;
 };
 
 export type InitialState = {
@@ -36,6 +47,7 @@ export type WebRequest =
       readonly options: OcrOptions | Record<string, never>;
     }
   | { readonly type: 'settingsGet' }
+  | { readonly type: 'windowHide' }
   | { readonly type: 'settingsUpdate'; readonly settings: Settings };
 
 export type OpenJsonDetail = {

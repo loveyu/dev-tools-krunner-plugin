@@ -33,6 +33,7 @@
     "papaparse": "5.7.0",
     "qs": "6.16.0",
     "smol-toml": "1.8.0",
+    "tui-image-editor": "3.15.3",
     "vue": "3.5.42",
     "yaml": "2.9.0"
   },

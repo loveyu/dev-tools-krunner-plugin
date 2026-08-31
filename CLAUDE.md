@@ -7,9 +7,9 @@
 一个 **Plasma 6 KRunner 开发者工具箱**。轻量能力继续由 Rust + `zbus` Runner 内联处理；
 复杂 JSON 与数据转换交互通过 `org.loveyu.DevTools` D-Bus 服务交给 `devtools-workerd`，由 Wry /
 WebKitGTK 承载 Vue 3 + Naive UI 工作台。已有能力包括 date/time、rand、uuid、时间戳互转、JSON
-Workbench、数据转换、OCR、条形码/二维码识别与生成。
+Workbench、数据转换、OCR、条形码/二维码识别与生成、纯前端图片压缩、编辑与水印。
 
-目标平台：KDE Plasma 6 + Wayland（在 6.3.6 / Frameworks 6.13 上开发验证）。
+Runner 目标平台为 KDE Plasma 6；Worker 支持 Debian 13 KDE Wayland/X11 与 Windows 10+。
 
 代码风格见 [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md)（核心：注释统一用中文）。
 
@@ -29,6 +29,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 ./install.sh                       # 构建 + 部署 + 重启 KRunner（每次改代码后重跑）
 ./target/release/devtools-runner   # 前台运行（stderr 输出日志），用于调试
 ./target/release/devtools-workerd --settings  # 打开或激活 Worker 设置页
+./target/release/devtools-workerd --launcher  # 打开独立工具启动器（无需 KRunner）
+cargo check -p devtools-workerd --target x86_64-pc-windows-msvc
 ```
 
 提交前三件套（格式化 + lint + 测试，按顺序跑一遍）：
@@ -62,9 +64,29 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 - `ocr` 通过 Worker 受限调用本机 Tesseract；`barcode` / `bar` / `qr` / `qrcode` 的识别通过
   ZBar。图片最多 10 MiB，子进程固定参数、30 秒超时、8 MiB 输出；命令缺失时仅禁用对应能力。
   QR、Code 128、Code 39、EAN-13 生成由 WebView 中的 `@bwip-js/browser` 纯前端完成。
+- `compress` / `squoosh` / `image-compress` / `imgcompress` 打开图片压缩页。解码、缩放、
+  JPEG/WebP/PNG 编码、前后对比与下载全部由 WebView TypeScript + Canvas 完成，不把图像发送给
+  Rust、后端或网络；Rust 只负责工具注册和页面路由。
+- `editor` / `image-editor` / `edit-image` / `imageedit` / `imgedit` 打开 TOAST UI Image Editor。
+  图片选择、拖放、粘贴、编辑、复制 PNG 和 PNG/JPEG 导出均在 WebView 内完成，并关闭使用统计。
+- `watermark` / `wm` / `image-watermark` 打开纯前端图片水印。文字/图片平铺水印、角度、透明度、
+  间距、复制和导出均由 TypeScript + Canvas 完成。交互参考 TransparentLC/watermarker，但不复制其
+  AGPL-3.0 源码；图片工具页面底部保留原项目入口，README 维护第三方代码来源与许可证说明。
+- Worker 业务层固定为 `Application -> WindowManager -> WebViewManager / IPC -> Platform`；业务模块
+  不得出现操作系统条件编译或 GTK/WebKitGTK/WebView2 API。`target_os` 选择只能位于
+  `src/platform/mod.rs`，Linux 与 Windows 具体实现分别放在 `platform/linux.rs`、`platform/windows.rs`。
 - 托盘基于 KDE StatusNotifierItem，菜单固定为设置/重启/退出。配置位于
   `$XDG_CONFIG_HOME/devtools/settings.json`（默认 `~/.config/devtools/settings.json`）；开机启动入口为
-  `$XDG_CONFIG_HOME/autostart/org.loveyu.DevTools.desktop`。
+  `$XDG_CONFIG_HOME/autostart/org.loveyu.DevTools.desktop`。主题设置支持跟随系统（默认）、浅色和深色；
+  语言支持自动识别（默认）、简体中文、繁体中文和英语，并同步到 WebView、Naive UI、图片编辑器与托盘菜单。
+- Worker 另有可独立于 KRunner 使用的类 KRunner 启动器。启动器快捷键与原生快速输入快捷键均默认关闭；
+  Linux Wayland 快捷键走 XDG GlobalShortcuts portal，X11/Windows 走平台注册接口。
+- 原生快速输入不是 WebView：Linux 使用 GTK Entry，Windows 使用 Win32 Edit。窗口按指针所在显示器工作区
+  裁剪尺寸和位置，Enter 后在原焦点应用回填；历史按 JSONL 写入用户数据目录。X11 回填依赖 `xdotool`，
+  KDE Wayland 回填通过 XDG RemoteDesktop portal 取得键盘权限，Windows 使用 `SendInput`。
+- WebView 单文件超过 WebView2 `NavigateToString` 限制，因此 Windows 使用 Wry 进程内自定义协议加载嵌入 HTML；
+  Linux 仍直接使用 `with_html`。两者都不能启动 localhost 服务。
+- i18n 消息 key 必须是唯一的 ASCII 语义 key，不得使用中文原文；简中/繁中/英语消息表 key 必须完全一致。
 - 前端固定 fnm + Node 26 + pnpm 11；Vue SFC 样式只用 SCSS。`pnpm check` 的 warning 上限为 0，
   依次执行 peer 检查、Prettier、类型感知 ESLint、Stylelint、`vue-tsc`、Vitest 覆盖率、Vite 构建、
   `tsx` 单文件产物校验。

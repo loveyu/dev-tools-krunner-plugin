@@ -6,4 +6,4 @@ mod media;
 
 pub use convert::ConvertTool;
 pub use json::JsonTool;
-pub use media::{BarcodeTool, OcrTool};
+pub use media::{BarcodeTool, ImageCompressionTool, ImageEditorTool, OcrTool, WatermarkTool};

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use devtools_core::{Action, Context, Tool, ToolError, ToolRequest, ToolResult};
-use devtools_tools::{BarcodeTool, ConvertTool, JsonTool, OcrTool};
+use devtools_tools::{
+    BarcodeTool, ConvertTool, ImageCompressionTool, ImageEditorTool, JsonTool, OcrTool,
+    WatermarkTool,
+};
 
 /// Worker 启动时注册的业务工具集合。
 pub struct ToolRegistry {
@@ -17,6 +20,9 @@ impl ToolRegistry {
         registry.register(ConvertTool);
         registry.register(OcrTool);
         registry.register(BarcodeTool);
+        registry.register(ImageCompressionTool);
+        registry.register(ImageEditorTool);
+        registry.register(WatermarkTool);
         registry
     }
 
@@ -31,7 +37,7 @@ impl ToolRegistry {
             "convert" => {
                 Context::from_text(payload).map_err(|error| ToolError::new(error.to_string()))?
             }
-            "ocr" | "barcode" => Context::Empty,
+            "ocr" | "barcode" | "image-compress" | "image-editor" | "watermark" => Context::Empty,
             _ => return Err(ToolError::new(format!("unsupported tool: {tool_id}"))),
         };
         let action = match tool_id {
@@ -39,6 +45,9 @@ impl ToolRegistry {
             "convert" => Action::Convert,
             "ocr" => Action::RecognizeText,
             "barcode" => Action::ProcessBarcode,
+            "image-compress" => Action::CompressImage,
+            "image-editor" => Action::EditImage,
+            "watermark" => Action::WatermarkImage,
             _ => return Err(ToolError::new(format!("unsupported tool: {tool_id}"))),
         };
         let request = ToolRequest { context, action };
@@ -94,8 +103,29 @@ mod tests {
         );
         assert_eq!(
             ToolRegistry::standard()
+                .execute("watermark", "ignored")
+                .expect("图片水印请求应执行成功")
+                .payload,
+            ""
+        );
+        assert_eq!(
+            ToolRegistry::standard()
+                .execute("image-editor", "ignored")
+                .expect("图片编辑请求应执行成功")
+                .payload,
+            ""
+        );
+        assert_eq!(
+            ToolRegistry::standard()
                 .execute("barcode", "ignored")
                 .expect("条码请求应执行成功")
+                .payload,
+            ""
+        );
+        assert_eq!(
+            ToolRegistry::standard()
+                .execute("image-compress", "ignored")
+                .expect("图片压缩请求应执行成功")
                 .payload,
             ""
         );

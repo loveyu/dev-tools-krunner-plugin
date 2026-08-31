@@ -5,6 +5,17 @@
   --muted-color: #64748b;
   --key-color: #2563eb;
   --value-color: #7c3aed;
+  --checker-color-a: #d1d5db;
+  --checker-color-b: #f3f4f6;
+  --editor-background: #e5e7eb;
+  --editor-surface: #f8fafc;
+  --editor-button: #fff;
+  --editor-border: #cbd5e1;
+  --editor-text: #172033;
+  --editor-muted: #64748b;
+  --editor-icon: #64748b;
+  --editor-icon-active: #0f172a;
+  --editor-icon-disabled: #cbd5e1;
   --font-code: 'JetBrains Mono', 'Cascadia Code', 'Noto Sans Mono', monospace;
 
   color: #172033;
@@ -15,17 +26,51 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --background-color: #111827;
     --panel-color: rgb(30 41 59 / 88%);
     --border-color: rgb(226 232 240 / 16%);
     --muted-color: #94a3b8;
     --key-color: #60a5fa;
     --value-color: #c4b5fd;
+    --checker-color-a: #334155;
+    --checker-color-b: #1e293b;
+    --editor-background: #111827;
+    --editor-surface: #1e293b;
+    --editor-button: #0f172a;
+    --editor-border: #475569;
+    --editor-text: #f8fafc;
+    --editor-muted: #94a3b8;
+    --editor-icon: #94a3b8;
+    --editor-icon-active: #fff;
+    --editor-icon-disabled: #475569;
 
     color: #e5e7eb;
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --background-color: #111827;
+  --panel-color: rgb(30 41 59 / 88%);
+  --border-color: rgb(226 232 240 / 16%);
+  --muted-color: #94a3b8;
+  --key-color: #60a5fa;
+  --value-color: #c4b5fd;
+  --checker-color-a: #334155;
+  --checker-color-b: #1e293b;
+  --editor-background: #111827;
+  --editor-surface: #1e293b;
+  --editor-button: #0f172a;
+  --editor-border: #475569;
+  --editor-text: #f8fafc;
+  --editor-muted: #94a3b8;
+  --editor-icon: #94a3b8;
+  --editor-icon-active: #fff;
+  --editor-icon-disabled: #475569;
+
+  color: #e5e7eb;
+  color-scheme: dark;
 }
 
 * {
@@ -48,6 +93,26 @@ body {
 button,
 input {
   font: inherit;
+}
+
+.open-source-attribution {
+  align-items: center;
+  color: var(--muted-color);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 0.4rem;
+  justify-content: center;
+
+  a {
+    color: var(--key-color);
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
+  }
 }
 
 .idle-view {

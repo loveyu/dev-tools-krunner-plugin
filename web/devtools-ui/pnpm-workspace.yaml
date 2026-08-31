@@ -6,4 +6,5 @@ verifyDepsBeforeRun: error
 saveExact: true
 allowBuilds:
   '@parcel/watcher': true
+  canvas: false
   esbuild: true

@@ -1,13 +1,13 @@
-use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use devtools_core::Settings;
 
+use crate::platform;
+
 const CONFIG_DIRECTORY: &str = "devtools";
 const CONFIG_FILE: &str = "settings.json";
-const AUTOSTART_FILE: &str = "org.loveyu.DevTools.desktop";
 
 /// 用户级配置与 KDE 自启动入口的持久化管理器。
 pub struct SettingsStore {
@@ -17,7 +17,7 @@ pub struct SettingsStore {
 impl SettingsStore {
     pub fn from_environment() -> io::Result<Self> {
         Ok(Self {
-            config_root: config_root_from_environment()?,
+            config_root: platform::config_root_from_environment()?,
         })
     }
 
@@ -41,7 +41,7 @@ impl SettingsStore {
         }
     }
 
-    pub fn apply(&self, previous: Settings, next: Settings, executable: &Path) -> io::Result<()> {
+    pub fn apply(&self, previous: &Settings, next: &Settings, executable: &Path) -> io::Result<()> {
         self.sync_autostart(next.autostart, executable)?;
         if let Err(error) = self.save(next) {
             let _ = self.sync_autostart(previous.autostart, executable);
@@ -62,15 +62,14 @@ impl SettingsStore {
 
         let directory = path.parent().expect("自启动文件必须有父目录");
         fs::create_dir_all(directory)?;
-        fs::write(path, autostart_entry(executable))
+        fs::write(path, platform::autostart_entry(executable))
     }
 
-    fn save(&self, settings: Settings) -> io::Result<()> {
+    fn save(&self, settings: &Settings) -> io::Result<()> {
         let path = self.settings_path();
         let directory = path.parent().expect("设置文件必须有父目录");
         fs::create_dir_all(directory)?;
-        let contents =
-            serde_json::to_string_pretty(&settings).expect("Settings 只含布尔字段，序列化不会失败");
+        let contents = serde_json::to_string_pretty(&settings).expect("Settings 序列化不会失败");
         fs::write(path, format!("{contents}\n"))
     }
 
@@ -79,50 +78,15 @@ impl SettingsStore {
     }
 
     fn autostart_path(&self) -> PathBuf {
-        self.config_root.join("autostart").join(AUTOSTART_FILE)
+        platform::autostart_path(&self.config_root)
     }
-}
-
-fn config_root_from_environment() -> io::Result<PathBuf> {
-    if let Some(path) = env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
-    }
-
-    env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .map(|home| PathBuf::from(home).join(".config"))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))
-}
-
-fn autostart_entry(executable: &Path) -> String {
-    let executable = quote_desktop_exec(executable);
-    format!(
-        "[Desktop Entry]\n\
-         Type=Application\n\
-         Name=DevTools Worker\n\
-         Comment=DevTools JSON Workbench GUI worker\n\
-         Exec={executable}\n\
-         Icon=applications-development\n\
-         Terminal=false\n\
-         NoDisplay=true\n\
-         OnlyShowIn=KDE;\n\
-         X-KDE-autostart-after=panel\n"
-    )
-}
-
-fn quote_desktop_exec(executable: &Path) -> String {
-    let escaped = executable
-        .to_string_lossy()
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('`', "\\`")
-        .replace('$', "\\$");
-    format!("\"{escaped}\"")
 }
 
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
+
+    use devtools_core::{LanguageMode, ThemeMode};
 
     use super::*;
 
@@ -141,17 +105,19 @@ mod tests {
         let settings = Settings {
             show_tray: false,
             autostart: true,
+            theme: ThemeMode::Dark,
+            language: LanguageMode::TraditionalChinese,
+            ..Settings::default()
         };
         let executable = Path::new("/tmp/Dev Tools/devtools-workerd");
 
         store
-            .apply(Settings::default(), settings, executable)
+            .apply(&Settings::default(), &settings, executable)
             .expect("设置应保存成功");
 
         assert_eq!(store.load(), settings);
         let entry = fs::read_to_string(store.autostart_path()).expect("应生成自启动文件");
-        assert!(entry.contains("Exec=\"/tmp/Dev Tools/devtools-workerd\""));
-        assert!(entry.contains("OnlyShowIn=KDE;"));
+        assert!(entry.contains(&executable.to_string_lossy().to_string()));
     }
 
     #[test]
@@ -168,15 +134,5 @@ mod tests {
             .expect("应删除自启动文件");
 
         assert!(!store.autostart_path().exists());
-    }
-
-    #[test]
-    fn desktop_exec_escapes_special_characters() {
-        let executable = Path::new("/tmp/a\\b\"$`/worker");
-
-        assert_eq!(
-            quote_desktop_exec(executable),
-            "\"/tmp/a\\\\b\\\"\\$\\`/worker\""
-        );
     }
 }

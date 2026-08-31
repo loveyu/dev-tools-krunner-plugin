@@ -14,10 +14,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: [
+        'src/i18n/core.ts',
         'src/tools/json/model.ts',
+        'src/tools/launcher/model.ts',
+        'src/tools/image-compression/model.ts',
+        'src/tools/image-editor/config.ts',
+        'src/tools/image-editor/export.ts',
         'src/tools/media/barcode-generator.ts',
         'src/tools/media/image.ts',
         'src/tools/media/result.ts',
+        'src/tools/watermark/model.ts',
       ],
       thresholds: {
         branches: 100,

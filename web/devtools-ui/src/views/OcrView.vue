@@ -15,6 +15,7 @@ import {
 } from 'naive-ui';
 
 import { postRequest } from '../ipc/bridge';
+import { useI18n } from '../i18n/runtime';
 import { executeOcr } from '../ipc/native-media';
 import { firstImageFile, prepareImage, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
 import type { OcrCapability, OcrResult, OcrWord, PreparedImage } from '../tools/media/types';
@@ -26,6 +27,7 @@ const props = defineProps<{
 }>();
 
 const message = useMessage();
+const { t } = useI18n();
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedImage = ref<PreparedImage | null>(null);
 const previewUrl = ref<string | null>(null);
@@ -46,19 +48,19 @@ const languageOptions = computed(() => {
     props.capability.languages.includes('eng') &&
     props.capability.languages.includes('chi_sim')
   ) {
-    options.unshift({ label: '简体中文 + 英文', value: 'chi_sim+eng' });
+    options.unshift({ label: t('ui.simplifiedChineseEnglish'), value: 'chi_sim+eng' });
   }
   return options;
 });
-const psmOptions = [
-  { label: '自动页面分割', value: 3 },
-  { label: '单列文本', value: 4 },
-  { label: '统一文本块', value: 6 },
-  { label: '稀疏文本', value: 11 },
-  { label: '稀疏文本（含方向）', value: 12 },
-  { label: '单行文本', value: 13 },
-];
-const versionLabel = computed(() => props.capability.version ?? 'Tesseract 未安装');
+const psmOptions = computed(() => [
+  { label: t('ui.automaticPageSegmentation'), value: 3 },
+  { label: t('ui.singleTextColumn'), value: 4 },
+  { label: t('ui.uniformTextBlock'), value: 6 },
+  { label: t('ui.sparseText'), value: 11 },
+  { label: t('ui.sparseTextWithOrientation'), value: 12 },
+  { label: t('ui.singleTextLine'), value: 13 },
+]);
+const versionLabel = computed(() => props.capability.version ?? t('ui.tesseractIsNotInstalled'));
 
 onMounted(() => {
   window.addEventListener('paste', handlePaste);
@@ -76,8 +78,8 @@ function defaultLanguage(languages: readonly string[]): string {
 }
 
 function languageLabel(value: string): string {
-  if (value === 'chi_sim') return '简体中文';
-  if (value === 'eng') return '英文';
+  if (value === 'chi_sim') return t('ui.simplifiedChinese');
+  if (value === 'eng') return t('ui.english2');
   return value;
 }
 
@@ -126,11 +128,11 @@ async function selectFile(file: File): Promise<void> {
 
 async function recognize(): Promise<void> {
   if (selectedImage.value === null) {
-    message.warning('请先选择或粘贴图片');
+    message.warning(t('ui.chooseOrPasteAnImageFirst'));
     return;
   }
   if (!props.capability.available) {
-    message.error('当前系统未提供 Tesseract OCR');
+    message.error(t('ui.tesseractOcrIsUnavailableOnThisSystem'));
     return;
   }
   busy.value = true;
@@ -146,7 +148,7 @@ async function recognize(): Promise<void> {
       },
     });
   } catch (caught: unknown) {
-    error.value = caught instanceof Error ? caught.message : String(caught);
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     busy.value = false;
   }
@@ -172,9 +174,9 @@ function wordStyle(word: OcrWord): CSSProperties {
 function copyText(): void {
   if (result.value === null || result.value.fullText === '') return;
   if (postRequest({ type: 'clipboardWrite', text: result.value.fullText })) {
-    message.success('已复制识别文字');
+    message.success(t('ui.recognizedTextCopied'));
   } else {
-    message.error('当前环境未提供剪贴板 IPC');
+    message.error(t('ui.clipboardIpcIsUnavailable'));
   }
 }
 
@@ -188,14 +190,15 @@ function releasePreview(): void {
   <main class="media-view">
     <header class="media-view__header">
       <div>
-        <h1>OCR 文字识别</h1>
-        <p>图片仅交给本机 Tesseract，支持选择、拖放和从剪贴板粘贴</p>
+        <h1>{{ t('ui.ocrTextRecognition') }}</h1>
+        <p>{{ t('ui.imagesStayOnThisMachineAndAreProcessedByTesseract') }}</p>
       </div>
       <NTag :bordered="false" size="small">{{ versionLabel }}</NTag>
     </header>
 
     <NAlert v-if="!capability.available" type="warning">
-      本机缺少 OCR 能力。Debian 13 可安装：tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+      {{ t('ui.ocrSupportIsMissingOnDebian13Install') }}tesseract-ocr tesseract-ocr-eng
+      tesseract-ocr-chi-sim
     </NAlert>
     <NAlert v-if="error !== null" closable type="error" @close="error = null">
       {{ error }}
@@ -209,14 +212,18 @@ function releasePreview(): void {
         :accept="SUPPORTED_IMAGE_TYPES.join(',')"
         @change="handleFileInput"
       />
-      <NButton @click="openFilePicker">选择图片</NButton>
-      <NSelect v-model:value="language" :options="languageOptions" placeholder="识别语言" />
+      <NButton @click="openFilePicker">{{ t('ui.chooseImage') }}</NButton>
+      <NSelect
+        v-model:value="language"
+        :options="languageOptions"
+        :placeholder="t('ui.recognitionLanguage')"
+      />
       <NSelect v-model:value="pageSegmentationMode" :options="psmOptions" />
       <NInputNumber
         v-model:value="minimumConfidence"
         :max="100"
         :min="0"
-        placeholder="最低置信度"
+        :placeholder="t('ui.minimumConfidence')"
       />
       <NButton
         :disabled="selectedImage === null || !capability.available"
@@ -224,12 +231,12 @@ function releasePreview(): void {
         type="primary"
         @click="recognize"
       >
-        开始识别
+        {{ t('ui.recognize') }}
       </NButton>
     </section>
 
     <section class="media-view__panels">
-      <NCard class="media-view__panel" title="图片预览" :bordered="false">
+      <NCard class="media-view__panel" :title="t('ui.imagePreview')" :bordered="false">
         <NSpin :show="busy">
           <div
             class="media-view__drop-zone"
@@ -238,7 +245,11 @@ function releasePreview(): void {
             @drop.prevent="handleDrop"
           >
             <div v-if="previewUrl !== null" class="media-view__image-wrap">
-              <img :src="previewUrl" alt="待识别图片" @load="updateImageDimensions" />
+              <img
+                :src="previewUrl"
+                :alt="t('ui.imageToRecognize2')"
+                @load="updateImageDimensions"
+              />
               <span
                 v-for="(word, index) in result?.words ?? []"
                 :key="`${String(index)}-${word.text}`"
@@ -247,7 +258,7 @@ function releasePreview(): void {
                 :title="`${word.text} · ${word.confidence.toFixed(1)}%`"
               />
             </div>
-            <NEmpty v-else description="拖放图片，或按 Ctrl+V 粘贴图片" />
+            <NEmpty v-else :description="t('ui.dropAnImageOrPressCtrlVToPaste')" />
           </div>
         </NSpin>
       </NCard>
@@ -255,15 +266,20 @@ function releasePreview(): void {
       <NCard class="media-view__panel" :bordered="false">
         <template #header>
           <div class="media-view__result-header">
-            <strong>识别结果</strong>
+            <strong>{{ t('ui.recognitionResult') }}</strong>
             <NTag v-if="result !== null" :bordered="false" size="small">
-              {{ result.words.length }} 词 · 平均 {{ result.averageConfidence.toFixed(1) }}%
+              {{
+                t('ui.countWordsConfidenceAverage', {
+                  count: result.words.length,
+                  confidence: result.averageConfidence.toFixed(1),
+                })
+              }}
             </NTag>
             <NButton
               :disabled="result?.fullText === undefined || result.fullText === ''"
               @click="copyText"
             >
-              复制
+              {{ t('ui.copy') }}
             </NButton>
           </div>
         </template>
@@ -271,7 +287,7 @@ function releasePreview(): void {
           :value="result?.fullText ?? ''"
           :autosize="{ minRows: 20, maxRows: 30 }"
           class="media-view__output"
-          placeholder="识别文字会显示在这里"
+          :placeholder="t('ui.recognizedTextAppearsHere')"
           readonly
           type="textarea"
         />

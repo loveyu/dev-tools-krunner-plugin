@@ -1,14 +1,13 @@
 use devtools_core::Settings;
-use gtk::gdk;
 use serde::Serialize;
 use tao::event_loop::{EventLoop, EventLoopProxy};
-use tao::platform::unix::WindowExtUnix;
 use tao::window::{Window, WindowBuilder};
-use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix};
+use wry::{WebView, WebViewBuilder};
 
 use crate::media_processor::{MediaCapabilities, MediaProcessingResult};
 use crate::native_converter::{ConverterCapabilities, NativeConversionResult};
-use crate::{UserEvent, WebRequest};
+use crate::platform;
+use crate::UserEvent;
 
 const WEB_APP: &str = include_str!("../../../web/devtools-ui/dist/index.html");
 
@@ -34,13 +33,13 @@ struct SettingsDetail<'a> {
     error: Option<&'a str>,
 }
 
-/// 单窗口 WebView 管理器。JSON 工作台与设置页复用同一个前端实例。
-pub struct WorkspaceWindow {
+/// WebView 管理器。JSON 工作台与设置页复用同一个前端实例。
+pub struct WebViewManager {
     window: Window,
     webview: WebView,
 }
 
-impl WorkspaceWindow {
+impl WebViewManager {
     pub fn new(
         event_loop: &EventLoop<UserEvent>,
         proxy: EventLoopProxy<UserEvent>,
@@ -68,17 +67,14 @@ impl WorkspaceWindow {
              window.__DEVTOOLS_PENDING_EVENTS__ = [];"
         );
         let web_proxy = proxy;
-        let builder = WebViewBuilder::new()
-            .with_html(WEB_APP)
-            .with_clipboard(false)
+        let builder = platform::configure_webview(WebViewBuilder::new(), WEB_APP);
+        let builder = builder
+            .with_clipboard(true)
             .with_initialization_script(&initialization_script)
             .with_ipc_handler(move |request| {
                 let _ = web_proxy.send_event(UserEvent::WebMessage(request.body().to_owned()));
             });
-        let container = window
-            .default_vbox()
-            .ok_or("Tao GTK window does not expose a default container")?;
-        let webview = builder.build_gtk(container)?;
+        let webview = platform::build_webview(builder, &window)?;
 
         Ok(Self { window, webview })
     }
@@ -88,26 +84,49 @@ impl WorkspaceWindow {
     }
 
     pub fn open_json(&self, payload: &str) {
+        self.use_workspace_size();
         self.dispatch("devtools:open-json", &JsonDetail { payload });
         self.show();
     }
 
     pub fn open_convert(&self, payload: &str) {
+        self.use_workspace_size();
         self.dispatch("devtools:open-convert", &JsonDetail { payload });
         self.show();
     }
 
     pub fn open_ocr(&self) {
+        self.use_workspace_size();
         self.dispatch("devtools:open-ocr", &());
         self.show();
     }
 
     pub fn open_barcode(&self) {
+        self.use_workspace_size();
         self.dispatch("devtools:open-barcode", &());
         self.show();
     }
 
+    pub fn open_image_compress(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-image-compress", &());
+        self.show();
+    }
+
+    pub fn open_image_editor(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-image-editor", &());
+        self.show();
+    }
+
+    pub fn open_watermark(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-watermark", &());
+        self.show();
+    }
+
     pub fn open_settings(&self, settings: Settings) {
+        self.use_workspace_size();
         self.send_settings(settings, None);
         self.dispatch("devtools:open-settings", &());
         self.show();
@@ -130,9 +149,14 @@ impl WorkspaceWindow {
     }
 
     pub fn copy_to_clipboard(&self, text: &str) {
-        let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
-        clipboard.set_text(text);
-        clipboard.store();
+        platform::copy_text(text);
+    }
+
+    pub fn open_launcher(&self) {
+        self.window
+            .set_inner_size(tao::dpi::LogicalSize::new(760.0, 480.0));
+        self.dispatch("devtools:open-launcher", &());
+        self.show();
     }
 
     fn show(&self) {
@@ -141,6 +165,11 @@ impl WorkspaceWindow {
         if let Err(error) = self.webview.focus() {
             eprintln!("devtools-workerd: failed to focus webview: {error}");
         }
+    }
+
+    fn use_workspace_size(&self) {
+        self.window
+            .set_inner_size(tao::dpi::LogicalSize::new(1180.0, 760.0));
     }
 
     fn dispatch(&self, event_name: &str, detail: &impl Serialize) {
@@ -155,9 +184,4 @@ impl WorkspaceWindow {
             eprintln!("devtools-workerd: failed to dispatch web event: {error}");
         }
     }
-}
-
-/// 解析来自 WebView 的 JSON IPC，请求类型受 serde 标签约束。
-pub fn parse_web_request(payload: &str) -> Result<WebRequest, serde_json::Error> {
-    serde_json::from_str(payload)
 }

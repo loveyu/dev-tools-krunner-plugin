@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { NAlert, NButton, NCard, NInput, NSelect, NSpin, NTag, useMessage } from 'naive-ui';
 
 import { postRequest } from '../ipc/bridge';
+import { useI18n } from '../i18n/runtime';
 import { executeNativeConversion } from '../ipc/native-converter';
 import { convertText } from '../tools/converter/core';
 import { detectFormat } from '../tools/converter/detect';
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 }>();
 
 const message = useMessage();
+const { t } = useI18n();
 const sourceText = ref<string>('');
 const outputText = ref<string>('');
 const sourceFormat = ref<FormatId>('plain');
@@ -52,7 +54,7 @@ const availableSources = computed(
 );
 const phpLabel = computed(() =>
   props.capabilities.phpVersion === null
-    ? 'PHP CLI 未安装'
+    ? t('ui.phpCliIsNotInstalled')
     : `PHP ${props.capabilities.phpVersion}`,
 );
 
@@ -83,7 +85,7 @@ async function runConversion(): Promise<void> {
       executeNativeConversion,
     );
   } catch (caught: unknown) {
-    error.value = caught instanceof Error ? caught.message : String(caught);
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     busy.value = false;
   }
@@ -104,7 +106,7 @@ function exchangeData(): void {
     !isDefinitionAvailable(nextSource) ||
     !isDefinitionAvailable(nextTarget)
   ) {
-    message.warning('当前格式组合不支持交换');
+    message.warning(t('ui.thisFormatPairCannotBeSwapped'));
     return;
   }
   const previousSourceText = sourceText.value;
@@ -118,9 +120,9 @@ function exchangeData(): void {
 
 function copyOutput(): void {
   if (postRequest({ type: 'clipboardWrite', text: outputText.value })) {
-    message.success('已复制转换结果');
+    message.success(t('ui.conversionResultCopied'));
   } else {
-    message.error('当前环境未提供剪贴板 IPC');
+    message.error(t('ui.clipboardIpcIsUnavailable'));
   }
 }
 
@@ -138,7 +140,7 @@ function toSelectOption(definition: FormatDefinition): {
 } {
   const available = isDefinitionAvailable(definition);
   return {
-    label: available ? definition.label : `${definition.label}（需要 PHP CLI）`,
+    label: available ? t(definition.label) : `${t(definition.label)}（${t('ui.requiresPhpCli')}）`,
     value: definition.id,
     disabled: !available,
   };
@@ -149,10 +151,12 @@ function toSelectOption(definition: FormatDefinition): {
   <main class="converter">
     <header class="converter__header">
       <div class="converter__title">
-        <NButton v-if="canGoBack" quaternary @click="emit('back')">返回 JSON</NButton>
+        <NButton v-if="canGoBack" quaternary @click="emit('back')">{{
+          t('ui.backToJson')
+        }}</NButton>
         <div>
-          <h1>数据转换</h1>
-          <p>优先在 WebView 本地转换；系统能力通过 Rust 安全调用</p>
+          <h1>{{ t('ui.dataConversion') }}</h1>
+          <p>{{ t('ui.conversionsRunLocallyInTheWebviewWhenPossibleSystemCapabilities') }}</p>
         </div>
       </div>
       <NTag :bordered="false" size="small">{{ phpLabel }}</NTag>
@@ -166,16 +170,16 @@ function toSelectOption(definition: FormatDefinition): {
       <NCard class="converter__panel" :bordered="false">
         <template #header>
           <div class="converter__panel-toolbar">
-            <strong>来源</strong>
+            <strong>{{ t('ui.source') }}</strong>
             <NSelect v-model:value="sourceFormat" filterable :options="sourceOptions" />
-            <NButton @click="detectSource">探测</NButton>
+            <NButton @click="detectSource">{{ t('ui.detect') }}</NButton>
           </div>
         </template>
         <NInput
           v-model:value="sourceText"
           :autosize="{ minRows: 20, maxRows: 32 }"
           class="converter__editor"
-          placeholder="输入或粘贴待转换文本"
+          :placeholder="t('ui.enterOrPasteTextToConvert')"
           type="textarea"
         />
       </NCard>
@@ -183,9 +187,9 @@ function toSelectOption(definition: FormatDefinition): {
       <NCard class="converter__panel" :bordered="false">
         <template #header>
           <div class="converter__panel-toolbar">
-            <strong>目标</strong>
+            <strong>{{ t('ui.target') }}</strong>
             <NSelect v-model:value="targetFormat" filterable :options="targetOptions" />
-            <NButton :disabled="outputText === ''" @click="copyOutput">复制</NButton>
+            <NButton :disabled="outputText === ''" @click="copyOutput">{{ t('ui.copy') }}</NButton>
           </div>
         </template>
         <NSpin :show="busy">
@@ -193,7 +197,7 @@ function toSelectOption(definition: FormatDefinition): {
             v-model:value="outputText"
             :autosize="{ minRows: 20, maxRows: 32 }"
             class="converter__editor"
-            placeholder="转换结果"
+            :placeholder="t('ui.conversionResult')"
             readonly
             type="textarea"
           />
@@ -202,8 +206,8 @@ function toSelectOption(definition: FormatDefinition): {
     </section>
 
     <footer class="converter__actions">
-      <NButton @click="exchangeData">交换</NButton>
-      <NButton :loading="busy" type="primary" @click="runConversion">转换</NButton>
+      <NButton @click="exchangeData">{{ t('ui.swap') }}</NButton>
+      <NButton :loading="busy" type="primary" @click="runConversion">{{ t('ui.convert') }}</NButton>
     </footer>
   </main>
 </template>

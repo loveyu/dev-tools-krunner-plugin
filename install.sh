@@ -91,6 +91,15 @@ mkdir -p "$KRUNNER_DIR"
 install -m 0644 "$SCRIPT_DIR/assets/org.kde.devtools.desktop" "$KRUNNER_DIR/"
 echo "==> krunner plugin -> $KRUNNER_DIR/org.kde.devtools.desktop"
 
+# --- Standalone application launcher (works without KRunner) --------------
+APPLICATIONS_DIR="$HOME/.local/share/applications"
+mkdir -p "$APPLICATIONS_DIR"
+sed "s|@WORKER_EXEC@|$INSTALL_DIR/devtools-workerd|g" \
+    "$SCRIPT_DIR/assets/org.loveyu.DevTools.desktop.in" \
+    > "$APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
+chmod 0644 "$APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
+echo "==> application launcher -> $APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
+
 # --- D-Bus activation service (substitute the absolute binary path) -------
 DBUS_DIR="$HOME/.local/share/dbus-1/services"
 mkdir -p "$DBUS_DIR"
@@ -113,14 +122,17 @@ killall devtools-runner >/dev/null 2>&1 || true
 killall devtools-workerd >/dev/null 2>&1 || true
 
 # --- Restart KRunner so it picks up the new runner metadata ---------------
-if command -v kquitapp6 >/dev/null 2>&1; then
+if command -v krunner >/dev/null 2>&1 && command -v kquitapp6 >/dev/null 2>&1; then
     kquitapp6 krunner >/dev/null 2>&1 || true
 fi
-sleep 1
-# Plasma respawns KRunner; start it explicitly as a fallback.
-if ! qdbus6 org.kde.krunner /App >/dev/null 2>&1; then
-    ( setsid krunner >/dev/null 2>&1 & ) || true
+if command -v krunner >/dev/null 2>&1; then
     sleep 1
+    # Plasma respawns KRunner; start it explicitly as a fallback.
+    if ! command -v qdbus6 >/dev/null 2>&1 \
+        || ! qdbus6 org.kde.krunner /App >/dev/null 2>&1; then
+        ( setsid krunner >/dev/null 2>&1 & ) || true
+        sleep 1
+    fi
 fi
 
 cat <<EOF
@@ -131,10 +143,15 @@ Installed. Open KRunner (Alt+Space) and try:
     convert    (or cv, with text in the clipboard)
     ocr         (local image text recognition)
     barcode     (or bar / qr / qrcode)
+    compress    (or squoosh / image-compress / imgcompress)
+    editor      (or image-editor / edit-image / imageedit / imgedit)
 Press Enter to copy the selected value.
 
 Open Worker settings directly:
     $INSTALL_DIR/devtools-workerd --settings
+
+Open the standalone launcher (also works without KRunner):
+    $INSTALL_DIR/devtools-workerd --launcher
 
 To open KRunner filtered to this runner from a terminal:
     qdbus6 org.kde.krunner /App org.kde.krunner.App.querySingleRunner org.kde.devtools date

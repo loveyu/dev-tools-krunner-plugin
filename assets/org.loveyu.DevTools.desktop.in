@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=DevTools
+Name[zh_CN]=DevTools 开发工具
+Name[zh_TW]=DevTools 開發工具
+Comment=Open the DevTools launcher
+Comment[zh_CN]=打开 DevTools 工具启动器
+Comment[zh_TW]=開啟 DevTools 工具啟動器
+Exec=@WORKER_EXEC@ --launcher
+Icon=applications-development
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

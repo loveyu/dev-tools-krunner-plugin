@@ -68,6 +68,9 @@ pub enum Action {
     Convert,
     RecognizeText,
     ProcessBarcode,
+    CompressImage,
+    EditImage,
+    WatermarkImage,
 }
 
 /// Worker 交给具体工具执行的请求。
@@ -136,11 +139,51 @@ impl Display for ContextError {
 impl Error for ContextError {}
 
 /// Worker 设置页读写的持久化配置。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub show_tray: bool,
     pub autostart: bool,
+    #[serde(default)]
+    pub global_shortcut_enabled: bool,
+    #[serde(default = "default_global_shortcut")]
+    pub global_shortcut: String,
+    #[serde(default)]
+    pub quick_input_enabled: bool,
+    #[serde(default = "default_quick_input_shortcut")]
+    pub quick_input_shortcut: String,
+    #[serde(default = "default_quick_input_width")]
+    pub quick_input_width: u32,
+    #[serde(default = "default_quick_input_height")]
+    pub quick_input_height: u32,
+    #[serde(default)]
+    pub theme: ThemeMode,
+    #[serde(default)]
+    pub language: LanguageMode,
+}
+
+/// WebView 的外观主题；默认跟随 KDE/系统配色。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// WebView 显示语言；自动模式由前端根据浏览器/桌面语言解析。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LanguageMode {
+    #[default]
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "zh-CN")]
+    SimplifiedChinese,
+    #[serde(rename = "zh-TW")]
+    TraditionalChinese,
+    #[serde(rename = "en-US")]
+    English,
 }
 
 impl Default for Settings {
@@ -148,8 +191,32 @@ impl Default for Settings {
         Self {
             show_tray: true,
             autostart: false,
+            global_shortcut_enabled: false,
+            global_shortcut: default_global_shortcut(),
+            quick_input_enabled: false,
+            quick_input_shortcut: default_quick_input_shortcut(),
+            quick_input_width: default_quick_input_width(),
+            quick_input_height: default_quick_input_height(),
+            theme: ThemeMode::System,
+            language: LanguageMode::System,
         }
     }
+}
+
+fn default_global_shortcut() -> String {
+    "Ctrl+Alt+Space".to_owned()
+}
+
+fn default_quick_input_shortcut() -> String {
+    "Ctrl+Alt+KeyI".to_owned()
+}
+
+fn default_quick_input_width() -> u32 {
+    560
+}
+
+fn default_quick_input_height() -> u32 {
+    56
 }
 
 #[cfg(test)]
@@ -201,5 +268,20 @@ mod tests {
             Context::from_json_text(raw),
             Err(ContextError::TooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn settings_without_theme_and_language_keep_system_defaults() {
+        let settings: Settings = serde_json::from_str(r#"{"showTray":false,"autostart":true}"#)
+            .expect("旧版设置应继续可读取");
+
+        assert_eq!(settings.theme, ThemeMode::System);
+        assert_eq!(settings.language, LanguageMode::System);
+        assert!(!settings.global_shortcut_enabled);
+        assert_eq!(settings.global_shortcut, "Ctrl+Alt+Space");
+        assert!(!settings.quick_input_enabled);
+        assert_eq!(settings.quick_input_shortcut, "Ctrl+Alt+KeyI");
+        assert_eq!(settings.quick_input_width, 560);
+        assert_eq!(settings.quick_input_height, 56);
     }
 }

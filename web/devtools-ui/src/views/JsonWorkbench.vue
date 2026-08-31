@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { NButton, NButtonGroup, NCard, NEmpty, NInput, NTag, useMessage } from 'naive-ui';
 
 import JsonTreeNode from '../components/JsonTreeNode.vue';
+import { useI18n } from '../i18n/runtime';
 import { postRequest } from '../ipc/bridge';
 import {
   buildJsonTree,
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 type OutputMode = 'formatted' | 'minified';
 
 const message = useMessage();
+const { t } = useI18n();
 const search = ref<string>('');
 const outputMode = ref<OutputMode>('formatted');
 const value = computed(() => parseJson(props.payload));
@@ -46,9 +48,9 @@ watch(
 
 function copyOutput(): void {
   if (postRequest({ type: 'clipboardWrite', text: output.value })) {
-    message.success('已复制当前 JSON');
+    message.success(t('ui.currentJsonCopied'));
   } else {
-    message.error('当前环境未提供剪贴板 IPC');
+    message.error(t('ui.clipboardIpcIsUnavailable'));
   }
 }
 </script>
@@ -58,42 +60,42 @@ function copyOutput(): void {
     <header class="workbench__toolbar">
       <div>
         <h1>JSON Workbench</h1>
-        <p>本地解析，不上传剪贴板内容</p>
+        <p>{{ t('ui.parsedLocallyClipboardContentIsNeverUploaded') }}</p>
       </div>
       <NButtonGroup>
         <NButton
           :type="outputMode === 'formatted' ? 'primary' : 'default'"
           @click="outputMode = 'formatted'"
         >
-          格式化
+          {{ t('ui.format') }}
         </NButton>
         <NButton
           :type="outputMode === 'minified' ? 'primary' : 'default'"
           @click="outputMode = 'minified'"
         >
-          压缩
+          {{ t('ui.minify') }}
         </NButton>
-        <NButton type="primary" secondary @click="copyOutput">复制</NButton>
-        <NButton secondary @click="emit('convert', output)">数据转换</NButton>
+        <NButton type="primary" secondary @click="copyOutput">{{ t('ui.copy') }}</NButton>
+        <NButton secondary @click="emit('convert', output)">{{ t('ui.dataConversion') }}</NButton>
       </NButtonGroup>
     </header>
 
     <section class="workbench__search">
-      <NInput v-model:value="search" clearable placeholder="搜索键、路径或值" />
+      <NInput v-model:value="search" clearable :placeholder="t('ui.searchKeysPathsOrValues')" />
       <NTag v-if="search.trim().length > 0" :bordered="false" size="small">
-        {{ matchCount }} 个命中
+        {{ t('ui.countMatches', { count: matchCount }) }}
       </NTag>
     </section>
 
     <section class="workbench__content">
-      <NCard class="workbench__panel" title="树视图" :bordered="false">
+      <NCard class="workbench__panel" :title="t('ui.treeView')" :bordered="false">
         <ul v-if="filteredTree !== null" class="workbench__tree">
           <JsonTreeNode :node="filteredTree" />
         </ul>
-        <NEmpty v-else description="没有匹配的 JSON 节点" />
+        <NEmpty v-else :description="t('ui.noMatchingJsonNodes')" />
       </NCard>
 
-      <NCard class="workbench__panel" title="文本预览" :bordered="false">
+      <NCard class="workbench__panel" :title="t('ui.textPreview')" :bordered="false">
         <pre class="workbench__output">{{ output }}</pre>
       </NCard>
     </section>

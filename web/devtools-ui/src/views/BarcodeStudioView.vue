@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { toCanvas } from '@bwip-js/browser';
 import {
   NAlert,
@@ -18,6 +18,7 @@ import {
 } from 'naive-ui';
 
 import { postRequest } from '../ipc/bridge';
+import { useI18n } from '../i18n/runtime';
 import { executeBarcode } from '../ipc/native-media';
 import { buildBarcodeOptions } from '../tools/media/barcode-generator';
 import { firstImageFile, prepareImage, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
@@ -37,6 +38,7 @@ const props = defineProps<{
 type TabName = 'generate' | 'recognize';
 
 const message = useMessage();
+const { t } = useI18n();
 const activeTab = ref<TabName>('recognize');
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedImage = ref<PreparedImage | null>(null);
@@ -51,12 +53,12 @@ const generationScale = ref<number | null>(4);
 const generationError = ref<string | null>(null);
 const generated = ref<boolean>(false);
 
-const formatOptions: { readonly label: string; readonly value: BarcodeFormat }[] = [
-  { label: '二维码（QR Code）', value: 'qrcode' },
+const formatOptions = computed<{ readonly label: string; readonly value: BarcodeFormat }[]>(() => [
+  { label: t('ui.qrCode'), value: 'qrcode' },
   { label: 'Code 128', value: 'code128' },
   { label: 'Code 39', value: 'code39' },
   { label: 'EAN-13', value: 'ean13' },
-];
+]);
 
 onMounted(() => {
   window.addEventListener('paste', handlePaste);
@@ -110,11 +112,11 @@ async function selectFile(file: File): Promise<void> {
 
 async function recognize(): Promise<void> {
   if (selectedImage.value === null) {
-    message.warning('请先选择或粘贴图片');
+    message.warning(t('ui.chooseOrPasteAnImageFirst'));
     return;
   }
   if (!props.capability.available) {
-    message.error('当前系统未提供 ZBar 条码识别');
+    message.error(t('ui.zbarBarcodeRecognitionIsUnavailableOnThisSystem'));
     return;
   }
   recognitionBusy.value = true;
@@ -126,7 +128,7 @@ async function recognize(): Promise<void> {
       options: {},
     });
   } catch (caught: unknown) {
-    recognitionError.value = caught instanceof Error ? caught.message : String(caught);
+    recognitionError.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     recognitionBusy.value = false;
   }
@@ -134,9 +136,9 @@ async function recognize(): Promise<void> {
 
 function copyCode(data: string): void {
   if (postRequest({ type: 'clipboardWrite', text: data })) {
-    message.success('已复制识别内容');
+    message.success(t('ui.recognizedContentCopied'));
   } else {
-    message.error('当前环境未提供剪贴板 IPC');
+    message.error(t('ui.clipboardIpcIsUnavailable'));
   }
 }
 
@@ -145,7 +147,7 @@ async function generate(): Promise<void> {
   generated.value = false;
   await nextTick();
   if (canvas.value === null) {
-    generationError.value = '画布尚未就绪';
+    generationError.value = t('ui.theCanvasIsNotReady');
     return;
   }
   try {
@@ -157,7 +159,7 @@ async function generate(): Promise<void> {
     toCanvas(canvas.value, options);
     generated.value = true;
   } catch (caught: unknown) {
-    generationError.value = caught instanceof Error ? caught.message : String(caught);
+    generationError.value = t(caught instanceof Error ? caught.message : String(caught));
   }
 }
 
@@ -165,7 +167,7 @@ function savePng(): void {
   if (canvas.value === null || !generated.value) return;
   canvas.value.toBlob((blob) => {
     if (blob === null) {
-      generationError.value = '无法导出 PNG';
+      generationError.value = t('ui.unableToExportPng');
       return;
     }
     const url = URL.createObjectURL(blob);
@@ -187,19 +189,19 @@ function releasePreview(): void {
   <main class="barcode-studio">
     <header class="barcode-studio__header">
       <div>
-        <h1>条码与二维码</h1>
-        <p>识别使用本机 ZBar；生成完全在 WebView 内完成</p>
+        <h1>{{ t('ui.barcodeAndQrCode') }}</h1>
+        <p>{{ t('ui.recognitionUsesLocalZbarGenerationRunsEntirelyInTheWebview') }}</p>
       </div>
       <NTag :bordered="false" size="small">
-        {{ capability.version ?? 'ZBar 未安装' }}
+        {{ capability.version ?? t('ui.zbarIsNotInstalled') }}
       </NTag>
     </header>
 
     <NTabs v-model:value="activeTab" animated type="line">
-      <NTabPane name="recognize" tab="识别">
+      <NTabPane name="recognize" :tab="t('ui.recognize2')">
         <section class="barcode-studio__section">
           <NAlert v-if="!capability.available" type="warning">
-            本机缺少条码识别能力。Debian 13 可安装：zbar-tools。生成功能仍可正常使用。
+            {{ t('ui.barcodeRecognitionIsMissingOnDebian13InstallZbarTools') }}
           </NAlert>
           <NAlert
             v-if="recognitionError !== null"
@@ -217,18 +219,18 @@ function releasePreview(): void {
             @change="handleFileInput"
           />
           <div class="barcode-studio__actions">
-            <NButton @click="openFilePicker">选择图片</NButton>
+            <NButton @click="openFilePicker">{{ t('ui.chooseImage') }}</NButton>
             <NButton
               :disabled="selectedImage === null || !capability.available"
               :loading="recognitionBusy"
               type="primary"
               @click="recognize"
             >
-              识别条码
+              {{ t('ui.recognizeCode') }}
             </NButton>
           </div>
           <section class="barcode-studio__recognition-grid">
-            <NCard class="barcode-studio__panel" title="图片预览" :bordered="false">
+            <NCard class="barcode-studio__panel" :title="t('ui.imagePreview')" :bordered="false">
               <NSpin :show="recognitionBusy">
                 <div
                   class="barcode-studio__drop-zone"
@@ -236,12 +238,20 @@ function releasePreview(): void {
                   @dragover.prevent
                   @drop.prevent="handleDrop"
                 >
-                  <img v-if="previewUrl !== null" :src="previewUrl" alt="待识别条码图片" />
-                  <NEmpty v-else description="拖放图片，或按 Ctrl+V 粘贴图片" />
+                  <img
+                    v-if="previewUrl !== null"
+                    :src="previewUrl"
+                    :alt="t('ui.imageToRecognize')"
+                  />
+                  <NEmpty v-else :description="t('ui.dropAnImageOrPressCtrlVToPaste')" />
                 </div>
               </NSpin>
             </NCard>
-            <NCard class="barcode-studio__panel" title="识别结果" :bordered="false">
+            <NCard
+              class="barcode-studio__panel"
+              :title="t('ui.recognitionResult')"
+              :bordered="false"
+            >
               <div
                 v-if="recognitionResult !== null && recognitionResult.codes.length > 0"
                 class="barcode-studio__codes"
@@ -253,21 +263,25 @@ function releasePreview(): void {
                 >
                   <div class="barcode-studio__code-header">
                     <NTag size="small">{{ code.codeType }}</NTag>
-                    <NButton size="small" @click="copyCode(code.data)">复制</NButton>
+                    <NButton size="small" @click="copyCode(code.data)">{{ t('ui.copy') }}</NButton>
                   </div>
                   <NCode :code="code.data" word-wrap />
                 </article>
               </div>
               <NEmpty
                 v-else
-                :description="recognitionResult === null ? '等待识别' : '图片中未识别到条码'"
+                :description="
+                  recognitionResult === null
+                    ? t('ui.waitingForRecognition')
+                    : t('ui.noBarcodeOrQrCodeFound')
+                "
               />
             </NCard>
           </section>
         </section>
       </NTabPane>
 
-      <NTabPane name="generate" tab="生成">
+      <NTabPane name="generate" :tab="t('ui.generate')">
         <section class="barcode-studio__section">
           <NAlert
             v-if="generationError !== null"
@@ -282,21 +296,21 @@ function releasePreview(): void {
               <NSelect v-model:value="generationFormat" :options="formatOptions" />
               <NInput
                 v-model:value="generationText"
-                placeholder="输入要编码的文本或数字"
+                :placeholder="t('ui.enterTextOrDigitsToEncode')"
                 type="textarea"
                 :autosize="{ minRows: 3, maxRows: 8 }"
               />
               <NInputNumber v-model:value="generationScale" :max="8" :min="1" />
               <div class="barcode-studio__actions">
-                <NButton type="primary" @click="generate">生成</NButton>
-                <NButton :disabled="!generated" @click="savePng">保存 PNG</NButton>
+                <NButton type="primary" @click="generate">{{ t('ui.generate') }}</NButton>
+                <NButton :disabled="!generated" @click="savePng">{{ t('ui.savePng') }}</NButton>
               </div>
             </div>
           </NCard>
-          <NCard class="barcode-studio__panel" title="生成预览" :bordered="false">
+          <NCard class="barcode-studio__panel" :title="t('ui.generatedPreview')" :bordered="false">
             <div class="barcode-studio__canvas-wrap">
               <canvas ref="canvas" />
-              <NEmpty v-if="!generated" description="设置内容后点击生成" />
+              <NEmpty v-if="!generated" :description="t('ui.setTheContentAndClickGenerate')" />
             </div>
           </NCard>
         </section>
