@@ -1,0 +1,8 @@
+[package]
+name = "devtools-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Business tools for DevTools."
+
+[dependencies]
+devtools-core = { path = "../devtools-core" }

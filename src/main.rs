@@ -8,6 +8,8 @@
 //! `uuid` / `u` 生成 UUID v1/v4/v7；`rand 16` / `r16` 等
 //! 生成随机字符串；直接输入**时间戳**（`1722931200` / `1722931200000`）
 //! 或**日期字符串**（`2024-08-06 12:00:00` / RFC3339 等）则双向互转；
+//! 直接输入 JSON 对象/数组，或在剪贴板为有效 JSON 时输入 `json`，通过 D-Bus
+//! 打开 JSON Workbench；
 //! 回车复制选中项并弹出桌面通知。
 //!
 //! match 结构在总线上的形状为
@@ -22,13 +24,18 @@
 
 #![allow(non_snake_case)]
 
+mod clipboard;
 mod convert;
+mod data_convert;
+mod json;
+mod media;
 mod rand;
 mod time;
 mod uuid;
 
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::{Local, Utc};
@@ -55,7 +62,10 @@ type KMatch = (
     HashMap<String, OwnedValue>,
 );
 
-struct DevTools;
+#[derive(Default)]
+struct DevTools {
+    inline_json: Mutex<json::InlineContextCache>,
+}
 
 /// 把字符串包装成 `a{sv}` 字典里用的 `OwnedValue`（DBus variant `v`）。
 /// `OwnedValue` 只对基础类型实现了 `From`，因此这里经由 `Value` 中转。
@@ -117,8 +127,27 @@ fn notify(summary: &str, body: &str) {
 impl DevTools {
     /// 返回某次查询匹配到的结果。
     /// 优先按输入「形状」识别时间戳 ↔ 时间字符串互转（裸数字 / 日期串），
-    /// 其次 UUID、随机字符串，最后回落到关键词驱动的时间查询。
+    /// 优先识别直接输入的 JSON，其次处理 JSON 剪贴板命令、UUID、随机字符串，
+    /// 最后回落到时间查询。
     fn Match(&self, query: &str) -> Vec<KMatch> {
+        let json_item = self
+            .inline_json
+            .lock()
+            .ok()
+            .and_then(|mut cache| json::match_for_query(query, &mut cache));
+        if let Some(item) = json_item {
+            // 直接输入可能包含敏感正文，日志仅记录命中类型，不记录 query。
+            eprintln!("devtools-runner: Match -> 1 json item");
+            return vec![item];
+        }
+        if let Some(item) = data_convert::match_for_query(query) {
+            eprintln!("devtools-runner: Match -> 1 convert item");
+            return vec![item];
+        }
+        if let Some(item) = media::match_for_query(query) {
+            eprintln!("devtools-runner: Match -> 1 media item");
+            return vec![item];
+        }
         if let Some(convert_query) = convert::parse_convert_query(query) {
             let items = convert::build_convert_matches(&convert_query);
             eprintln!(
@@ -153,6 +182,22 @@ impl DevTools {
 
     /// 对某条 match 执行默认动作（复制 + 通知）。
     fn Run(&self, match_id: &str, _action_id: &str) -> zbus::fdo::Result<()> {
+        if json::handles_match_id(match_id) {
+            let mut cache = self
+                .inline_json
+                .lock()
+                .map_err(|_| zbus::fdo::Error::Failed("JSON context lock poisoned".to_owned()))?;
+            return json::open_workbench(match_id, &mut cache)
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()));
+        }
+        if match_id == data_convert::OPEN_MATCH_ID {
+            return data_convert::open_workbench()
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()));
+        }
+        if media::handles_match_id(match_id) {
+            return media::open_tool(match_id)
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()));
+        }
         match value_for_id(match_id) {
             Some(value) => {
                 eprintln!("devtools-runner: copy '{match_id}' -> {value}");
@@ -171,15 +216,19 @@ impl DevTools {
         HashMap::new()
     }
 
-    /// 一次 match 会话结束时调用。当前没有需要清理的资源。
-    fn Teardown(&self) {}
+    /// 一次 match 会话结束时清理直接输入的 JSON，保证正文只在必要期间驻留内存。
+    fn Teardown(&self) {
+        if let Ok(mut cache) = self.inline_json.lock() {
+            cache.clear();
+        }
+    }
 }
 
 fn main() {
     eprintln!("devtools-runner: starting {SERVICE_NAME} at {OBJECT_PATH}");
     let _connection = match ConnectionBuilder::session()
         .and_then(|b| b.name(SERVICE_NAME))
-        .and_then(|b| b.serve_at(OBJECT_PATH, DevTools))
+        .and_then(|b| b.serve_at(OBJECT_PATH, DevTools::default()))
         .and_then(|b| b.build())
     {
         Ok(c) => c,

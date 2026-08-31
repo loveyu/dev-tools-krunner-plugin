@@ -4,10 +4,10 @@
 
 ## 这是什么
 
-一个 **Plasma 6 KRunner 的 DBus runner**（Rust + `zbus`）。KRunner 调用我们暴露的
-session-bus 服务，我们对 `date`/`time` 查询返回多种时间格式，回车时把选中值复制到剪贴板。
-MVP 范围是内联的 date/time；后续扩展了 `rand`（随机字符串）、`uuid`（UUID v4 生成）。
-设计文档（原始需求 / `README.md`）描述了后续的外部插件管理器架构。
+一个 **Plasma 6 KRunner 开发者工具箱**。轻量能力继续由 Rust + `zbus` Runner 内联处理；
+复杂 JSON 与数据转换交互通过 `org.loveyu.DevTools` D-Bus 服务交给 `devtools-workerd`，由 Wry /
+WebKitGTK 承载 Vue 3 + Naive UI 工作台。已有能力包括 date/time、rand、uuid、时间戳互转、JSON
+Workbench、数据转换、OCR、条形码/二维码识别与生成。
 
 目标平台：KDE Plasma 6 + Wayland（在 6.3.6 / Frameworks 6.13 上开发验证）。
 
@@ -16,24 +16,60 @@ MVP 范围是内联的 date/time；后续扩展了 `rand`（随机字符串）�
 ## 常用命令
 
 ```bash
-cargo build --release              # 构建（cargo 通过 rustup 装在 ~/.cargo）
-cargo test                         # 单元测试（纯函数：命令解析 / 时间格式化）
-cargo fmt                          # 按 rustfmt 标准格式化（会改写文件）
-cargo clippy --all-targets -- -D warnings   # lint，警告当错误
+cd web/devtools-ui
+fnm use 26
+pnpm install --frozen-lockfile
+pnpm check                         # 前端完整门禁并生成 dist/index.html
+cd ../..
+
+cargo build --release --workspace  # 构建（Worker 会嵌入前端 dist）
+cargo test --workspace             # 所有 Rust crate 单元测试
+cargo fmt --all                    # 按 rustfmt 标准格式化（会改写文件）
+cargo clippy --workspace --all-targets -- -D warnings
 ./install.sh                       # 构建 + 部署 + 重启 KRunner（每次改代码后重跑）
 ./target/release/devtools-runner   # 前台运行（stderr 输出日志），用于调试
+./target/release/devtools-workerd --settings  # 打开或激活 Worker 设置页
 ```
 
 提交前三件套（格式化 + lint + 测试，按顺序跑一遍）：
 
 ```bash
-cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
+pnpm --dir web/devtools-ui check
+cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
 
 > `rustfmt` / `clippy` 不在 rustup minimal profile 里，缺失时先 `rustup component add rustfmt clippy`。
 
 单元测试覆盖纯函数逻辑（`suffixes_for_query` 的命令解析/精确优先、`value_of` 的格式化、
 `build_matches` 的排序与 id 前缀）；与 KRunner/DBus 的集成验证见下文「调试/验证」。
+
+## Workbench / Worker 初版架构
+
+- 根 package 仍是 `devtools-runner`；Workspace 成员位于 `crates/devtools-core`、
+  `crates/devtools-tools`、`crates/devtools-workerd`。
+- Runner 的 `src/json.rs` 优先识别 KRunner 输入框里的 JSON 对象/数组；也支持通过 Klipper D-Bus
+  读取剪贴板（Wayland/X11 通用），失败时分别回落到 `wl-paste` / `xclip`。两种入口均限制为 2 MiB。
+- KRunner 的 `Run` 只回传 match id，因此直接输入的 JSON 使用不含正文的 `json:inline:*` id，正文
+  仅保存于最多 8 条的查询会话内存缓存，执行后单次消费并在 `Teardown` 清空；剪贴板入口仍在 Run
+  阶段重新读取。两者最终都通过 `org.loveyu.DevTools.OpenTool("json", payload)` 交给 Worker，Runner
+  不记录 JSON 原文，也不加载 GTK/WebKit。
+- `src/data_convert.rs` 支持复制文本后输入 `convert`（最短前缀 `co`）或 `cv`；JSON 页面也可直接
+  带当前结果切换到转换页。Worker 注册 `JsonTool` 与 `ConvertTool`，复用单个 Tao/Wry 窗口。前端是构建后嵌入的单个 HTML，不启动本地
+  HTTP 服务；关闭窗口只隐藏，托盘与 D-Bus 服务继续存活。
+- 转换器以异步 codec registry 组织。JSON、JSON5、YAML、XML、表格、Query、Cookie、Postman、
+  URI/JWT、Base64/Gzip 与 URL Encode 优先由 TypeScript 实现；PHP 三种格式只在 Worker 探测到
+  `php` 时启用，通过受限固定脚本执行。禁止 PHP 对象反序列化，不迁移旧版 `eval` 解析。
+- `ocr` 通过 Worker 受限调用本机 Tesseract；`barcode` / `bar` / `qr` / `qrcode` 的识别通过
+  ZBar。图片最多 10 MiB，子进程固定参数、30 秒超时、8 MiB 输出；命令缺失时仅禁用对应能力。
+  QR、Code 128、Code 39、EAN-13 生成由 WebView 中的 `@bwip-js/browser` 纯前端完成。
+- 托盘基于 KDE StatusNotifierItem，菜单固定为设置/重启/退出。配置位于
+  `$XDG_CONFIG_HOME/devtools/settings.json`（默认 `~/.config/devtools/settings.json`）；开机启动入口为
+  `$XDG_CONFIG_HOME/autostart/org.loveyu.DevTools.desktop`。
+- 前端固定 fnm + Node 26 + pnpm 11；Vue SFC 样式只用 SCSS。`pnpm check` 的 warning 上限为 0，
+  依次执行 peer 检查、Prettier、类型感知 ESLint、Stylelint、`vue-tsc`、Vitest 覆盖率、Vite 构建、
+  `tsx` 单文件产物校验。
+- Debian 13 构建 Worker 需要 `libgtk-3-dev` 和 `libwebkit2gtk-4.1-dev`。Wry 必须通过
+  `WebViewBuilderExtUnix::build_gtk` 挂入 GTK 容器，才能同时支持 KDE Wayland 和 X11。
 
 ## 调试 / 验证
 

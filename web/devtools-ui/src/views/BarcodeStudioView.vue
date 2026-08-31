@@ -1,0 +1,420 @@
+<script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { toCanvas } from '@bwip-js/browser';
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NCode,
+  NEmpty,
+  NInput,
+  NInputNumber,
+  NSelect,
+  NSpin,
+  NTabPane,
+  NTabs,
+  NTag,
+  useMessage,
+} from 'naive-ui';
+
+import { postRequest } from '../ipc/bridge';
+import { executeBarcode } from '../ipc/native-media';
+import { buildBarcodeOptions } from '../tools/media/barcode-generator';
+import { firstImageFile, prepareImage, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
+import type {
+  BarcodeCapability,
+  BarcodeFormat,
+  BarcodeRecognitionResult,
+  PreparedImage,
+} from '../tools/media/types';
+
+defineOptions({ name: 'BarcodeStudioView' });
+
+const props = defineProps<{
+  readonly capability: BarcodeCapability;
+}>();
+
+type TabName = 'generate' | 'recognize';
+
+const message = useMessage();
+const activeTab = ref<TabName>('recognize');
+const fileInput = ref<HTMLInputElement | null>(null);
+const selectedImage = ref<PreparedImage | null>(null);
+const previewUrl = ref<string | null>(null);
+const recognitionResult = ref<BarcodeRecognitionResult | null>(null);
+const recognitionBusy = ref<boolean>(false);
+const recognitionError = ref<string | null>(null);
+const canvas = ref<HTMLCanvasElement | null>(null);
+const generationFormat = ref<BarcodeFormat>('qrcode');
+const generationText = ref<string>('https://example.com');
+const generationScale = ref<number | null>(4);
+const generationError = ref<string | null>(null);
+const generated = ref<boolean>(false);
+
+const formatOptions: { readonly label: string; readonly value: BarcodeFormat }[] = [
+  { label: '二维码（QR Code）', value: 'qrcode' },
+  { label: 'Code 128', value: 'code128' },
+  { label: 'Code 39', value: 'code39' },
+  { label: 'EAN-13', value: 'ean13' },
+];
+
+onMounted(() => {
+  window.addEventListener('paste', handlePaste);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('paste', handlePaste);
+  releasePreview();
+});
+
+function openFilePicker(): void {
+  fileInput.value?.click();
+}
+
+function handleFileInput(event: Event): void {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.files === null) return;
+  const file = firstImageFile(input.files);
+  if (file !== null) void selectFile(file);
+  input.value = '';
+}
+
+function handlePaste(event: ClipboardEvent): void {
+  if (activeTab.value !== 'recognize' || event.clipboardData === null) return;
+  const file = firstImageFile(event.clipboardData.files);
+  if (file === null) return;
+  event.preventDefault();
+  void selectFile(file);
+}
+
+function handleDrop(event: DragEvent): void {
+  const file = event.dataTransfer === null ? null : firstImageFile(event.dataTransfer.files);
+  if (file !== null) void selectFile(file);
+}
+
+async function selectFile(file: File): Promise<void> {
+  recognitionBusy.value = true;
+  recognitionError.value = null;
+  try {
+    const prepared = await prepareImage(file);
+    releasePreview();
+    previewUrl.value = URL.createObjectURL(file);
+    selectedImage.value = prepared;
+    recognitionResult.value = null;
+    if (props.capability.available) await recognize();
+  } catch (caught: unknown) {
+    recognitionError.value = caught instanceof Error ? caught.message : String(caught);
+  } finally {
+    recognitionBusy.value = false;
+  }
+}
+
+async function recognize(): Promise<void> {
+  if (selectedImage.value === null) {
+    message.warning('请先选择或粘贴图片');
+    return;
+  }
+  if (!props.capability.available) {
+    message.error('当前系统未提供 ZBar 条码识别');
+    return;
+  }
+  recognitionBusy.value = true;
+  recognitionError.value = null;
+  try {
+    recognitionResult.value = await executeBarcode({
+      ...selectedImage.value,
+      operation: 'barcode',
+      options: {},
+    });
+  } catch (caught: unknown) {
+    recognitionError.value = caught instanceof Error ? caught.message : String(caught);
+  } finally {
+    recognitionBusy.value = false;
+  }
+}
+
+function copyCode(data: string): void {
+  if (postRequest({ type: 'clipboardWrite', text: data })) {
+    message.success('已复制识别内容');
+  } else {
+    message.error('当前环境未提供剪贴板 IPC');
+  }
+}
+
+async function generate(): Promise<void> {
+  generationError.value = null;
+  generated.value = false;
+  await nextTick();
+  if (canvas.value === null) {
+    generationError.value = '画布尚未就绪';
+    return;
+  }
+  try {
+    const options = buildBarcodeOptions({
+      format: generationFormat.value,
+      text: generationText.value,
+      scale: generationScale.value ?? 4,
+    });
+    toCanvas(canvas.value, options);
+    generated.value = true;
+  } catch (caught: unknown) {
+    generationError.value = caught instanceof Error ? caught.message : String(caught);
+  }
+}
+
+function savePng(): void {
+  if (canvas.value === null || !generated.value) return;
+  canvas.value.toBlob((blob) => {
+    if (blob === null) {
+      generationError.value = '无法导出 PNG';
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${generationFormat.value}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+function releasePreview(): void {
+  if (previewUrl.value !== null) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = null;
+}
+</script>
+
+<template>
+  <main class="barcode-studio">
+    <header class="barcode-studio__header">
+      <div>
+        <h1>条码与二维码</h1>
+        <p>识别使用本机 ZBar；生成完全在 WebView 内完成</p>
+      </div>
+      <NTag :bordered="false" size="small">
+        {{ capability.version ?? 'ZBar 未安装' }}
+      </NTag>
+    </header>
+
+    <NTabs v-model:value="activeTab" animated type="line">
+      <NTabPane name="recognize" tab="识别">
+        <section class="barcode-studio__section">
+          <NAlert v-if="!capability.available" type="warning">
+            本机缺少条码识别能力。Debian 13 可安装：zbar-tools。生成功能仍可正常使用。
+          </NAlert>
+          <NAlert
+            v-if="recognitionError !== null"
+            closable
+            type="error"
+            @close="recognitionError = null"
+          >
+            {{ recognitionError }}
+          </NAlert>
+          <input
+            ref="fileInput"
+            class="barcode-studio__file-input"
+            type="file"
+            :accept="SUPPORTED_IMAGE_TYPES.join(',')"
+            @change="handleFileInput"
+          />
+          <div class="barcode-studio__actions">
+            <NButton @click="openFilePicker">选择图片</NButton>
+            <NButton
+              :disabled="selectedImage === null || !capability.available"
+              :loading="recognitionBusy"
+              type="primary"
+              @click="recognize"
+            >
+              识别条码
+            </NButton>
+          </div>
+          <section class="barcode-studio__recognition-grid">
+            <NCard class="barcode-studio__panel" title="图片预览" :bordered="false">
+              <NSpin :show="recognitionBusy">
+                <div
+                  class="barcode-studio__drop-zone"
+                  @click="openFilePicker"
+                  @dragover.prevent
+                  @drop.prevent="handleDrop"
+                >
+                  <img v-if="previewUrl !== null" :src="previewUrl" alt="待识别条码图片" />
+                  <NEmpty v-else description="拖放图片，或按 Ctrl+V 粘贴图片" />
+                </div>
+              </NSpin>
+            </NCard>
+            <NCard class="barcode-studio__panel" title="识别结果" :bordered="false">
+              <div
+                v-if="recognitionResult !== null && recognitionResult.codes.length > 0"
+                class="barcode-studio__codes"
+              >
+                <article
+                  v-for="(code, index) in recognitionResult.codes"
+                  :key="`${String(index)}-${code.codeType}-${code.data}`"
+                  class="barcode-studio__code"
+                >
+                  <div class="barcode-studio__code-header">
+                    <NTag size="small">{{ code.codeType }}</NTag>
+                    <NButton size="small" @click="copyCode(code.data)">复制</NButton>
+                  </div>
+                  <NCode :code="code.data" word-wrap />
+                </article>
+              </div>
+              <NEmpty
+                v-else
+                :description="recognitionResult === null ? '等待识别' : '图片中未识别到条码'"
+              />
+            </NCard>
+          </section>
+        </section>
+      </NTabPane>
+
+      <NTabPane name="generate" tab="生成">
+        <section class="barcode-studio__section">
+          <NAlert
+            v-if="generationError !== null"
+            closable
+            type="error"
+            @close="generationError = null"
+          >
+            {{ generationError }}
+          </NAlert>
+          <NCard class="barcode-studio__panel" :bordered="false">
+            <div class="barcode-studio__generator-form">
+              <NSelect v-model:value="generationFormat" :options="formatOptions" />
+              <NInput
+                v-model:value="generationText"
+                placeholder="输入要编码的文本或数字"
+                type="textarea"
+                :autosize="{ minRows: 3, maxRows: 8 }"
+              />
+              <NInputNumber v-model:value="generationScale" :max="8" :min="1" />
+              <div class="barcode-studio__actions">
+                <NButton type="primary" @click="generate">生成</NButton>
+                <NButton :disabled="!generated" @click="savePng">保存 PNG</NButton>
+              </div>
+            </div>
+          </NCard>
+          <NCard class="barcode-studio__panel" title="生成预览" :bordered="false">
+            <div class="barcode-studio__canvas-wrap">
+              <canvas ref="canvas" />
+              <NEmpty v-if="!generated" description="设置内容后点击生成" />
+            </div>
+          </NCard>
+        </section>
+      </NTabPane>
+    </NTabs>
+  </main>
+</template>
+
+<style scoped lang="scss">
+.barcode-studio {
+  display: grid;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 1.25rem;
+
+  &__header,
+  &__actions,
+  &__code-header {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  &__header {
+    justify-content: space-between;
+
+    h1,
+    p {
+      margin: 0;
+    }
+
+    p {
+      color: var(--muted-color);
+      margin-top: 0.25rem;
+    }
+  }
+
+  &__section {
+    display: grid;
+    gap: 1rem;
+  }
+
+  &__file-input {
+    display: none;
+  }
+
+  &__recognition-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  &__panel {
+    background: var(--panel-color);
+  }
+
+  &__drop-zone {
+    cursor: pointer;
+    display: grid;
+    min-height: 28rem;
+    place-items: center;
+
+    img {
+      display: block;
+      max-height: 62vh;
+      max-width: 100%;
+    }
+  }
+
+  &__codes {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  &__code {
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  &__code-header {
+    justify-content: space-between;
+  }
+
+  &__generator-form {
+    display: grid;
+    gap: 1rem;
+
+    :deep(.n-select),
+    :deep(.n-input-number) {
+      max-width: 22rem;
+    }
+  }
+
+  &__canvas-wrap {
+    display: grid;
+    min-height: 22rem;
+    overflow: auto;
+    place-items: center;
+
+    canvas {
+      max-width: 100%;
+    }
+  }
+}
+
+@media (width <= 860px) {
+  .barcode-studio {
+    &__header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    &__recognition-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+</style>

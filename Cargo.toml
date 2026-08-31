@@ -4,6 +4,10 @@ version = "0.3.0"
 edition = "2021"
 description = "A KRunner (Plasma 6) DBus runner for developer utilities."
 
+[workspace]
+members = ["crates/devtools-core", "crates/devtools-tools", "crates/devtools-workerd"]
+resolver = "2"
+
 [[bin]]
 name = "devtools-runner"
 path = "src/main.rs"
@@ -13,6 +17,7 @@ zbus = { version = "4", default-features = false, features = ["async-io", "block
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rand = "0.8"
 uuid = { version = "1", features = ["v1", "v4", "v7"] }
+devtools-core = { path = "crates/devtools-core" }
 
 [profile.release]
 opt-level = 2

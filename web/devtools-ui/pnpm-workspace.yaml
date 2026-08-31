@@ -1,0 +1,9 @@
+engineStrict: true
+strictPeerDependencies: true
+autoInstallPeers: false
+strictDepBuilds: true
+verifyDepsBeforeRun: error
+saveExact: true
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
