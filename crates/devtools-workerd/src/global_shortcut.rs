@@ -67,9 +67,20 @@ impl ShortcutManager {
             return Ok(());
         }
 
-        self.manager.replace(&next)?;
-        self.commit_registration(launcher, quick_input, next);
-        Ok(())
+        match self.manager.replace(&next) {
+            Ok(()) => {
+                self.commit_registration(launcher, quick_input, next);
+                Ok(())
+            }
+            Err(error) => {
+                // replace 失败（如 portal 等待超时）后，portal 线程可能迟到完成
+                // 绑定，留下仍占用系统快捷键的幽灵会话——期间 UI 显示禁用但
+                // 快捷键实际可用。清空已注册缓存，确保下一次 apply（含回滚）
+                // 不走同值短路、强制 replace 重建会话，把幽灵会话收敛掉。
+                self.registered.clear();
+                Err(error)
+            }
+        }
     }
 
     fn commit_registration(
