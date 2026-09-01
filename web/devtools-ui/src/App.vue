@@ -18,6 +18,7 @@ import {
   translate,
 } from './i18n/runtime';
 import { postRequest } from './ipc/bridge';
+import { setEffectiveTheme } from './theme/runtime';
 import type { OpenConvertDetail, OpenJsonDetail, Settings, SettingsDetail } from './ipc/types';
 import type { FormatId } from './tools/converter/types';
 import type { LauncherAction, LauncherToolId } from './tools/launcher/model';
@@ -109,6 +110,15 @@ watch(
   () => settings.value.theme,
   (mode) => {
     document.documentElement.dataset['theme'] = mode;
+  },
+  { immediate: true },
+);
+
+// 同步生效主题给 Naive UI 之外的组件（CodeMirror 编辑器等）。
+watch(
+  theme,
+  (value) => {
+    setEffectiveTheme(value !== null);
   },
   { immediate: true },
 );

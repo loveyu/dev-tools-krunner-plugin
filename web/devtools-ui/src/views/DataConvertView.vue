@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { NAlert, NButton, NCard, NInput, NSelect, NSpin, NTag, useMessage } from 'naive-ui';
+import { NAlert, NButton, NCard, NSelect, NSpin, NTag, useMessage } from 'naive-ui';
 
+import CodeEditor from '../components/CodeEditor.vue';
 import { postRequest } from '../ipc/bridge';
 import { useI18n } from '../i18n/runtime';
 import { executeNativeConversion } from '../ipc/native-converter';
+import { languageOfFormat } from '../tools/editor/languages';
 import { convertText } from '../tools/converter/core';
 import { detectFormat } from '../tools/converter/detect';
 import { definitionOf, FORMAT_DEFINITIONS } from '../tools/converter/formats';
@@ -52,6 +54,8 @@ const availableSources = computed(
       ).map((definition) => definition.id),
     ),
 );
+const sourceLanguage = computed(() => languageOfFormat(sourceFormat.value));
+const targetLanguage = computed(() => languageOfFormat(targetFormat.value));
 const phpLabel = computed(() =>
   props.capabilities.phpVersion === null
     ? t('ui.phpCliIsNotInstalled')
@@ -159,7 +163,14 @@ function toSelectOption(definition: FormatDefinition): {
           <p>{{ t('ui.conversionsRunLocallyInTheWebviewWhenPossibleSystemCapabilities') }}</p>
         </div>
       </div>
-      <NTag :bordered="false" size="small">{{ phpLabel }}</NTag>
+      <!-- 主操作放头部：页面底部长时间无人注视，放那里容易被忽略。 -->
+      <div class="converter__header-actions">
+        <NButton @click="exchangeData">{{ t('ui.swap') }}</NButton>
+        <NButton :loading="busy" type="primary" @click="runConversion">
+          {{ t('ui.convert') }}
+        </NButton>
+        <NTag :bordered="false" size="small">{{ phpLabel }}</NTag>
+      </div>
     </header>
 
     <NAlert v-if="error !== null" closable type="error" @close="error = null">
@@ -175,12 +186,10 @@ function toSelectOption(definition: FormatDefinition): {
             <NButton @click="detectSource">{{ t('ui.detect') }}</NButton>
           </div>
         </template>
-        <NInput
-          v-model:value="sourceText"
-          :autosize="{ minRows: 12, maxRows: 28 }"
-          class="converter__editor"
+        <CodeEditor
+          v-model="sourceText"
+          :language="sourceLanguage"
           :placeholder="t('ui.enterOrPasteTextToConvert')"
-          type="textarea"
         />
       </NCard>
 
@@ -192,29 +201,23 @@ function toSelectOption(definition: FormatDefinition): {
             <NButton :disabled="outputText === ''" @click="copyOutput">{{ t('ui.copy') }}</NButton>
           </div>
         </template>
-        <NSpin :show="busy">
-          <NInput
-            v-model:value="outputText"
-            :autosize="{ minRows: 12, maxRows: 28 }"
-            class="converter__editor"
+        <NSpin class="converter__spin" :show="busy">
+          <CodeEditor
+            v-model="outputText"
+            :language="targetLanguage"
             :placeholder="t('ui.conversionResult')"
             readonly
-            type="textarea"
           />
         </NSpin>
       </NCard>
     </section>
-
-    <footer class="converter__actions">
-      <NButton @click="exchangeData">{{ t('ui.swap') }}</NButton>
-      <NButton :loading="busy" type="primary" @click="runConversion">{{ t('ui.convert') }}</NButton>
-    </footer>
   </main>
 </template>
 
 <style scoped lang="scss">
 .converter {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--page-gap);
   height: var(--app-viewport-height);
   min-height: 0;
@@ -223,16 +226,21 @@ function toSelectOption(definition: FormatDefinition): {
 
   &__header,
   &__title,
-  &__panel-toolbar,
-  &__actions {
+  &__header-actions,
+  &__panel-toolbar {
     align-items: center;
     display: flex;
+    flex-shrink: 0;
     gap: 0.75rem;
   }
 
   &__header {
     flex-wrap: wrap;
     justify-content: space-between;
+  }
+
+  &__header-actions {
+    flex-wrap: wrap;
   }
 
   &__title {
@@ -249,14 +257,31 @@ function toSelectOption(definition: FormatDefinition): {
 
   &__panels {
     display: grid;
+    flex: 1 1 auto;
     gap: 1rem;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    min-height: 0;
+    grid-template-rows: minmax(14rem, 1fr);
+    min-height: 14rem;
   }
 
   &__panel {
     background: var(--panel-color);
+    display: flex;
+    flex-direction: column;
+    min-height: 14rem;
     min-width: 0;
+
+    // 编辑器填满卡片剩余高度，由 CodeMirror 内部滚动。
+    :deep(.n-card-content) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    :deep(.code-editor) {
+      flex: 1 1 auto;
+    }
   }
 
   &__panel-toolbar {
@@ -268,12 +293,23 @@ function toSelectOption(definition: FormatDefinition): {
     }
   }
 
-  &__editor {
-    font-family: var(--font-code);
-  }
+  &__spin {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
 
-  &__actions {
-    justify-content: center;
+    :deep(.n-spin-container),
+    :deep(.n-spin-content) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    :deep(.code-editor) {
+      flex: 1 1 auto;
+    }
   }
 }
 
@@ -285,7 +321,9 @@ function toSelectOption(definition: FormatDefinition): {
     }
 
     &__panels {
-      grid-template-columns: 1fr;
+      // 窄屏堆叠时退出行约束，每个面板保持可用高度并由页面滚动。
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
     }
   }
 }

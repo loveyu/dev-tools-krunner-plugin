@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { NAlert, NButton, NCard, NInput, NSelect, NSpace, NTag, useMessage } from 'naive-ui';
 
+import CodeEditor from '../components/CodeEditor.vue';
 import { useI18n } from '../i18n/runtime';
 import { postRequest } from '../ipc/bridge';
 import {
@@ -85,15 +86,15 @@ function moveToDecrypt(): void {
 
     <section class="crypto-view__groups">
       <NCard :title="t('crypto.encrypt.title')" :bordered="false">
-        <NSpace vertical>
+        <div class="crypto-view__stack">
           <NSelect v-model:value="encryptAlgorithm" :options="algorithmOptions" />
           <NAlert v-if="isLegacyCipher(encryptAlgorithm)" type="warning" :show-icon="false">
             {{ t('crypto.warning.legacyCipher') }}
           </NAlert>
-          <NInput
-            v-model:value="encryptInput"
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 12 }"
+          <CodeEditor
+            v-model="encryptInput"
+            max-height="16rem"
+            min-height="6rem"
             :placeholder="t('crypto.encrypt.inputPlaceholder')"
           />
           <NInput
@@ -112,26 +113,26 @@ function moveToDecrypt(): void {
               {{ t('crypto.actions.sendToDecrypt') }}
             </NButton>
           </NSpace>
-          <NInput
-            v-model:value="encryptOutput"
-            readonly
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 12 }"
+          <CodeEditor
+            v-model="encryptOutput"
+            max-height="16rem"
+            min-height="6rem"
             :placeholder="t('crypto.encrypt.outputPlaceholder')"
+            readonly
           />
-        </NSpace>
+        </div>
       </NCard>
 
       <NCard :title="t('crypto.decrypt.title')" :bordered="false">
-        <NSpace vertical>
+        <div class="crypto-view__stack">
           <NSelect v-model:value="decryptAlgorithm" :options="algorithmOptions" />
           <NAlert v-if="isLegacyCipher(decryptAlgorithm)" type="warning" :show-icon="false">
             {{ t('crypto.warning.legacyCipher') }}
           </NAlert>
-          <NInput
-            v-model:value="decryptInput"
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 12 }"
+          <CodeEditor
+            v-model="decryptInput"
+            max-height="16rem"
+            min-height="6rem"
             :placeholder="t('crypto.decrypt.inputPlaceholder')"
           />
           <NInput
@@ -147,14 +148,14 @@ function moveToDecrypt(): void {
               {{ t('ui.copy') }}
             </NButton>
           </NSpace>
-          <NInput
-            v-model:value="decryptOutput"
-            readonly
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 12 }"
+          <CodeEditor
+            v-model="decryptOutput"
+            max-height="16rem"
+            min-height="6rem"
             :placeholder="t('crypto.decrypt.outputPlaceholder')"
+            readonly
           />
-        </NSpace>
+        </div>
       </NCard>
     </section>
 
@@ -199,6 +200,14 @@ function moveToDecrypt(): void {
     display: grid;
     gap: 1rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  // 编辑器与表单控件的垂直流；NSpace 的 item 包装盒会让 CodeEditor 宽度收缩，故用原生流布局。
+  &__stack {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 }
 

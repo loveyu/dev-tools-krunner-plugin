@@ -7,7 +7,6 @@ import {
   NCard,
   NCode,
   NEmpty,
-  NInput,
   NInputNumber,
   NSelect,
   NSpin,
@@ -17,6 +16,7 @@ import {
   useMessage,
 } from 'naive-ui';
 
+import CodeEditor from '../components/CodeEditor.vue';
 import { postRequest } from '../ipc/bridge';
 import { useI18n } from '../i18n/runtime';
 import { executeBarcode } from '../ipc/native-media';
@@ -294,11 +294,11 @@ function releasePreview(): void {
           <NCard class="barcode-studio__panel" :bordered="false">
             <div class="barcode-studio__generator-form">
               <NSelect v-model:value="generationFormat" :options="formatOptions" />
-              <NInput
-                v-model:value="generationText"
+              <CodeEditor
+                v-model="generationText"
+                max-height="14rem"
+                min-height="6rem"
                 :placeholder="t('ui.enterTextOrDigitsToEncode')"
-                type="textarea"
-                :autosize="{ minRows: 3, maxRows: 8 }"
               />
               <NInputNumber v-model:value="generationScale" :max="8" :min="1" />
               <div class="barcode-studio__actions">

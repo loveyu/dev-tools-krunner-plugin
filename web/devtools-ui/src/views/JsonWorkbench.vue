@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { NButton, NButtonGroup, NCard, NEmpty, NInput, NTag, useMessage } from 'naive-ui';
 
+import CodeEditor from '../components/CodeEditor.vue';
 import JsonTreeNode from '../components/JsonTreeNode.vue';
 import { useI18n } from '../i18n/runtime';
 import { postRequest } from '../ipc/bridge';
@@ -95,8 +96,12 @@ function copyOutput(): void {
         <NEmpty v-else :description="t('ui.noMatchingJsonNodes')" />
       </NCard>
 
-      <NCard class="workbench__panel" :title="t('ui.textPreview')" :bordered="false">
-        <pre class="workbench__output">{{ output }}</pre>
+      <NCard
+        class="workbench__panel workbench__panel--text"
+        :title="t('ui.textPreview')"
+        :bordered="false"
+      >
+        <CodeEditor :model-value="output" language="json" readonly />
       </NCard>
     </section>
   </main>
@@ -157,22 +162,26 @@ function copyOutput(): void {
     background: var(--panel-color);
     min-height: clamp(18rem, 58vh, 34rem);
 
-    :deep(.n-card__content) {
+    :deep(.n-card-content) {
       overflow: auto;
+    }
+  }
+
+  &__panel--text {
+    :deep(.n-card-content) {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    :deep(.code-editor) {
+      flex: 1 1 auto;
     }
   }
 
   &__tree {
     margin: 0;
     padding: 0;
-  }
-
-  &__output {
-    font-family: var(--font-code);
-    line-height: 1.6;
-    margin: 0;
-    overflow: auto;
-    white-space: pre-wrap;
   }
 }
 

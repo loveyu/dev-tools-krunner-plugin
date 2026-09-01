@@ -6,7 +6,6 @@ import {
   NButton,
   NCard,
   NEmpty,
-  NInput,
   NInputNumber,
   NSelect,
   NSpin,
@@ -14,6 +13,7 @@ import {
   useMessage,
 } from 'naive-ui';
 
+import CodeEditor from '../components/CodeEditor.vue';
 import { postRequest } from '../ipc/bridge';
 import { useI18n } from '../i18n/runtime';
 import { executeOcr } from '../ipc/native-media';
@@ -283,13 +283,12 @@ function releasePreview(): void {
             </NButton>
           </div>
         </template>
-        <NInput
-          :value="result?.fullText ?? ''"
-          :autosize="{ minRows: 20, maxRows: 30 }"
+        <CodeEditor
+          :model-value="result?.fullText ?? ''"
           class="media-view__output"
+          min-height="clamp(18rem, 56vh, 31rem)"
           :placeholder="t('ui.recognizedTextAppearsHere')"
           readonly
-          type="textarea"
         />
       </NCard>
     </section>
@@ -298,7 +297,8 @@ function releasePreview(): void {
 
 <style scoped lang="scss">
 .media-view {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--page-gap);
   height: var(--app-viewport-height);
   min-height: 0;
@@ -310,6 +310,7 @@ function releasePreview(): void {
   &__result-header {
     align-items: center;
     display: flex;
+    flex-shrink: 0;
     gap: 0.75rem;
   }
 
@@ -347,18 +348,39 @@ function releasePreview(): void {
 
   &__panels {
     display: grid;
+    flex: 1 1 auto;
     gap: 1rem;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-rows: minmax(clamp(18rem, 56vh, 31rem), 1fr);
     min-height: 0;
   }
 
   &__panel {
     background: var(--panel-color);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    :deep(.n-card-content) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    :deep(.n-spin-container),
+    :deep(.n-spin-content) {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+    }
   }
 
   &__drop-zone {
     cursor: pointer;
     display: grid;
+    flex: 1 1 auto;
     min-height: clamp(18rem, 56vh, 31rem);
     place-items: center;
   }
@@ -389,14 +411,16 @@ function releasePreview(): void {
   }
 
   &__output {
-    font-family: var(--font-code);
+    flex: 1 1 auto;
   }
 }
 
 @media (width <= 920px) {
   .media-view {
     &__panels {
+      // 窄屏堆叠时退出行约束，每个面板保持可用高度并由页面滚动。
       grid-template-columns: 1fr;
+      grid-template-rows: none;
     }
   }
 }
