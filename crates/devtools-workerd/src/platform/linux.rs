@@ -809,7 +809,7 @@ fn spawn_portal_typer() -> mpsc::Sender<String> {
                     session = Some(create_portal_session().await?);
                 }
                 // Portal 首次授权也可能切走焦点；授权完成后再等待原窗口重新获得焦点。
-                tokio::time::sleep(Duration::from_millis(120)).await;
+                tokio::time::sleep(Duration::from_millis(300)).await;
                 portal_type_text(session.as_ref().expect("session was initialized"), &text).await
             });
             if let Err(error) = result {
@@ -864,6 +864,8 @@ async fn portal_type_text(session: &PortalSession, text: &str) -> Result<(), Str
                 .await
                 .map_err(|error| error.to_string())?;
         }
+        // Portal/合成器处理输入是异步的，轻微节流可避免字符丢失或到达顺序变化。
+        tokio::time::sleep(Duration::from_millis(4)).await;
     }
     Ok(())
 }
