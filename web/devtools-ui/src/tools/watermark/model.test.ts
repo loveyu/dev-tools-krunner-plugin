@@ -106,9 +106,15 @@ describe('createTileOrigins', () => {
   });
 
   it('rejects invalid dimensions and layout values', () => {
-    expect(() => createTileOrigins(0, 80, 20, 10, 5, 5, 0, 0)).toThrow('positive');
-    expect(() => createTileOrigins(100, 80, -1, 10, 5, 5, 0, 0)).toThrow('positive');
-    expect(() => createTileOrigins(100, 80, 20, 10, 5, 5, Number.NaN, 0)).toThrow('finite');
+    expect(() => createTileOrigins(0, 80, 20, 10, 5, 5, 0, 0)).toThrow(
+      'watermark.errors.invalidDimensions',
+    );
+    expect(() => createTileOrigins(100, 80, -1, 10, 5, 5, 0, 0)).toThrow(
+      'watermark.errors.invalidDimensions',
+    );
+    expect(() => createTileOrigins(100, 80, 20, 10, 5, 5, Number.NaN, 0)).toThrow(
+      'watermark.errors.invalidLayout',
+    );
   });
 });
 

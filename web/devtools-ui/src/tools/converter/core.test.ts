@@ -46,10 +46,10 @@ describe('convertText', () => {
 
   it('拒绝把仅输出和仅输入格式放错方向', async () => {
     await expect(convertText('{}', 'json-min', 'json', unexpectedNativeCall)).rejects.toThrow(
-      '不支持作为来源格式',
+      'convert.errors.sourceFormatNotParsable',
     );
     await expect(convertText('{}', 'json', 'toml', unexpectedNativeCall)).rejects.toThrow(
-      '不支持作为目标格式',
+      'convert.errors.targetFormatNotStringifiable',
     );
   });
 });
@@ -106,8 +106,12 @@ describe('Web codecs', () => {
   });
 
   it('拒绝 XML DOCTYPE 和原型污染键', () => {
-    expect(() => parse('xml', '<!DOCTYPE root><root/>')).toThrow('DOCTYPE');
-    expect(() => parse('json', '{"__proto__":{"polluted":true}}')).toThrow('不允许的对象键');
+    expect(() => parse('xml', '<!DOCTYPE root><root/>')).toThrow(
+      'convert.errors.xmlDoctypeForbidden',
+    );
+    expect(() => parse('json', '{"__proto__":{"polluted":true}}')).toThrow(
+      'convert.errors.forbiddenObjectKey',
+    );
   });
 });
 

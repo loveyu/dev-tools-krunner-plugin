@@ -153,6 +153,8 @@ async function selectFile(file: File): Promise<void> {
 }
 
 async function runCompression(): Promise<void> {
+  // Naive UI 的 loading 按钮不会阻止 click，需显式拦截并发压缩。
+  if (busy.value) return;
   if (selectedFile.value === null || maxWidth.value === null || maxHeight.value === null) {
     message.warning(t('ui.chooseAnImageAndSetValidOutputDimensionsFirst'));
     return;

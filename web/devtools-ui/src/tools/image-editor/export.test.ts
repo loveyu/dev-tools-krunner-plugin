@@ -14,8 +14,12 @@ describe('image editor export', () => {
   });
 
   it('rejects invalid and incomplete image data URLs', () => {
-    expect(() => dataUrlToBlob('https://example.com/image.png')).toThrow('无效');
-    expect(() => dataUrlToBlob('data:image/png;base64,')).toThrow('无效');
+    expect(() => dataUrlToBlob('https://example.com/image.png')).toThrow(
+      'ui.theEditorReturnedInvalidImageData',
+    );
+    expect(() => dataUrlToBlob('data:image/png;base64,')).toThrow(
+      'ui.theEditorReturnedInvalidImageData',
+    );
   });
 
   it('normalizes JPEG quality', () => {

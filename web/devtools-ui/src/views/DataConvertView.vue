@@ -78,20 +78,32 @@ watch(
   { immediate: true },
 );
 
+// 转换请求序号：并发触发（连点按钮/切页重入）时，仅最新一次允许写回结果，
+// 防止慢的旧转换（如 PHP 最长数秒）后到并覆盖新结果。
+let conversionSequence = 0;
+
 async function runConversion(): Promise<void> {
+  const sequence = (conversionSequence += 1);
   busy.value = true;
   error.value = null;
   try {
-    outputText.value = await convertText(
+    const result = await convertText(
       sourceText.value,
       sourceFormat.value,
       targetFormat.value,
       executeNativeConversion,
     );
+    if (sequence === conversionSequence) {
+      outputText.value = result;
+    }
   } catch (caught: unknown) {
-    error.value = t(caught instanceof Error ? caught.message : String(caught));
+    if (sequence === conversionSequence) {
+      error.value = t(caught instanceof Error ? caught.message : String(caught));
+    }
   } finally {
-    busy.value = false;
+    if (sequence === conversionSequence) {
+      busy.value = false;
+    }
   }
 }
 
@@ -183,7 +195,7 @@ function toSelectOption(definition: FormatDefinition): {
           <div class="converter__panel-toolbar">
             <strong>{{ t('ui.source') }}</strong>
             <NSelect v-model:value="sourceFormat" filterable :options="sourceOptions" />
-            <NButton @click="detectSource">{{ t('ui.detect') }}</NButton>
+            <NButton :loading="busy" @click="detectSource">{{ t('ui.detect') }}</NButton>
           </div>
         </template>
         <CodeEditor

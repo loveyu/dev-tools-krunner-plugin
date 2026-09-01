@@ -2,8 +2,8 @@ import type { FormatDefinition, FormatId } from './types';
 
 export const FORMAT_DEFINITIONS: readonly FormatDefinition[] = [
   format('json', 'JSON', true, true),
-  format('json-deep', 'JSON 深度解码', true, true),
-  format('json-min', 'JSON 压缩', false, true),
+  format('json-deep', 'ui.deepDecodedJson', true, true),
+  format('json-min', 'ui.minifiedJson', false, true),
   format('js-object', 'JS Object', true, true),
   format('yaml', 'YAML', true, true),
   format('xml', 'XML', true, true),
@@ -18,7 +18,7 @@ export const FORMAT_DEFINITIONS: readonly FormatDefinition[] = [
   format('line', 'Raw Line', true, true),
   format('plain', 'Plain Text', true, true),
   format('uri', 'URI', true, false),
-  format('jwt', 'JWT（仅解码）', true, false),
+  format('jwt', 'ui.jwtDecodeOnly', true, false),
   format('base64', 'Base64', true, true),
   format('base64-gzip', 'Base64 + Gzip', true, true),
   format('url-encode', 'URL Encode', true, true),
@@ -30,7 +30,7 @@ export const FORMAT_DEFINITIONS: readonly FormatDefinition[] = [
 export function definitionOf(id: FormatId): FormatDefinition {
   const definition = FORMAT_DEFINITIONS.find((candidate) => candidate.id === id);
   if (definition === undefined) {
-    throw new Error(`未知转换格式：${id}`);
+    throw new Error('convert.errors.unknownFormat');
   }
   return definition;
 }

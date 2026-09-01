@@ -42,13 +42,13 @@ function executeMetadataRequest(
     nextRequestId += 1;
     const timeout = window.setTimeout(() => {
       pending.delete(requestId);
-      reject(new Error('元数据读取超时'));
+      reject(new Error('ipc.errors.metadataTimeout'));
     }, 45_000);
     pending.set(requestId, { resolve, reject, timeout });
     if (!postRequest(createRequest(requestId))) {
       window.clearTimeout(timeout);
       pending.delete(requestId);
-      reject(new Error('当前环境未提供元数据 IPC'));
+      reject(new Error('ipc.errors.metadataUnavailable'));
     }
   });
 }
@@ -61,7 +61,7 @@ function handleMetadataResult(event: Event): void {
   pending.delete(event.detail.requestId);
   if (event.detail.error !== null) request.reject(new Error(event.detail.error));
   else if (event.detail.result !== null) request.resolve(event.detail.result);
-  else request.reject(new Error('元数据读取未返回结果'));
+  else request.reject(new Error('ipc.errors.metadataEmptyResult'));
 }
 
 function isMetadataResult(detail: unknown): detail is MetadataProcessResultDetail {

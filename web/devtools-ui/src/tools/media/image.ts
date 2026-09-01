@@ -12,10 +12,10 @@ export const SUPPORTED_IMAGE_TYPES = [
 
 export function validateImageMetadata(type: string, size: number): string | null {
   if (!(SUPPORTED_IMAGE_TYPES as readonly string[]).includes(type)) {
-    return '仅支持 PNG、JPEG、BMP、TIFF、WebP 和 GIF 图片';
+    return 'ui.onlyPngJpegBmpTiffWebpAndGifImagesAre';
   }
-  if (size <= 0) return '图片内容为空';
-  if (size > MAX_IMAGE_BYTES) return '图片不能超过 10 MiB';
+  if (size <= 0) return 'ui.theImageIsEmpty';
+  if (size > MAX_IMAGE_BYTES) return 'ui.theImageMustNotExceed10Mib';
   return null;
 }
 

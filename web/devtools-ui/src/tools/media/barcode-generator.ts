@@ -4,12 +4,12 @@ import type { BarcodeGenerationRequest } from './types';
 
 export function buildBarcodeOptions(request: BarcodeGenerationRequest): RenderOptions {
   const text = request.text;
-  if (text.trim() === '') throw new Error('请输入要编码的内容');
+  if (text.trim() === '') throw new Error('ui.enterContentToEncode');
   if (!Number.isInteger(request.scale) || request.scale < 1 || request.scale > 8) {
-    throw new Error('缩放比例必须是 1 到 8 的整数');
+    throw new Error('ui.scaleMustBeAnIntegerFrom1To8');
   }
   if (request.format === 'ean13' && !/^\d{12,13}$/u.test(text)) {
-    throw new Error('EAN-13 需要输入 12 位数据或含校验位的 13 位数字');
+    throw new Error('ui.ean13Requires12DigitsOr13DigitsIncludingThe');
   }
   const common: RenderOptions = {
     bcid: request.format,

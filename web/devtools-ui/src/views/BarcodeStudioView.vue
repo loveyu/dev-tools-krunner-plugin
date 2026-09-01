@@ -22,6 +22,7 @@ import { useI18n } from '../i18n/runtime';
 import { executeBarcode } from '../ipc/native-media';
 import { buildBarcodeOptions } from '../tools/media/barcode-generator';
 import { firstImageFile, prepareImage, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
+import { downloadBlob } from '../tools/media/download';
 import type {
   BarcodeCapability,
   BarcodeFormat,
@@ -93,20 +94,30 @@ function handleDrop(event: DragEvent): void {
   if (file !== null) void selectFile(file);
 }
 
+// 选图流程序号：连选多张图时，仅最新一次允许写回状态，防止旧流程
+// 覆盖新图并误释放新图的预览 blob URL。
+let selectSequence = 0;
+
 async function selectFile(file: File): Promise<void> {
+  const sequence = (selectSequence += 1);
   recognitionBusy.value = true;
   recognitionError.value = null;
   try {
     const prepared = await prepareImage(file);
+    if (sequence !== selectSequence) return;
     releasePreview();
     previewUrl.value = URL.createObjectURL(file);
     selectedImage.value = prepared;
     recognitionResult.value = null;
     if (props.capability.available) await recognize();
   } catch (caught: unknown) {
-    recognitionError.value = caught instanceof Error ? caught.message : String(caught);
+    if (sequence === selectSequence) {
+      recognitionError.value = t(errorMessage(caught));
+    }
   } finally {
-    recognitionBusy.value = false;
+    if (sequence === selectSequence) {
+      recognitionBusy.value = false;
+    }
   }
 }
 
@@ -128,10 +139,14 @@ async function recognize(): Promise<void> {
       options: {},
     });
   } catch (caught: unknown) {
-    recognitionError.value = t(caught instanceof Error ? caught.message : String(caught));
+    recognitionError.value = t(errorMessage(caught));
   } finally {
     recognitionBusy.value = false;
   }
+}
+
+function errorMessage(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught);
 }
 
 function copyCode(data: string): void {
@@ -159,7 +174,7 @@ async function generate(): Promise<void> {
     toCanvas(canvas.value, options);
     generated.value = true;
   } catch (caught: unknown) {
-    generationError.value = t(caught instanceof Error ? caught.message : String(caught));
+    generationError.value = t(errorMessage(caught));
   }
 }
 
@@ -170,12 +185,7 @@ function savePng(): void {
       generationError.value = t('ui.unableToExportPng');
       return;
     }
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${generationFormat.value}.png`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${generationFormat.value}.png`);
   }, 'image/png');
 }
 

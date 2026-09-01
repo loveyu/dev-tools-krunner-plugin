@@ -89,7 +89,7 @@ export function normalizeValue(value: unknown, seen = new WeakSet<object>()): Da
   }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new Error('不支持 NaN 或 Infinity');
+      throw new Error('convert.errors.nanOrInfinity');
     }
     return value;
   }
@@ -100,10 +100,10 @@ export function normalizeValue(value: unknown, seen = new WeakSet<object>()): Da
     return value.toISOString();
   }
   if (typeof value !== 'object') {
-    throw new Error(`不支持的数据类型：${typeof value}`);
+    throw new Error('convert.errors.unsupportedDataType');
   }
   if (seen.has(value)) {
-    throw new Error('数据包含循环引用');
+    throw new Error('convert.errors.circularReference');
   }
   seen.add(value);
   try {
@@ -113,7 +113,7 @@ export function normalizeValue(value: unknown, seen = new WeakSet<object>()): Da
     const output: Record<string, DataValue> = Object.create(null) as Record<string, DataValue>;
     for (const [key, item] of Object.entries(value)) {
       if (FORBIDDEN_OBJECT_KEYS.has(key)) {
-        throw new Error(`不允许的对象键：${key}`);
+        throw new Error('convert.errors.forbiddenObjectKey');
       }
       output[key] = normalizeValue(item, seen);
     }
@@ -197,12 +197,12 @@ function stringifyJsValue(value: DataValue, depth: number): string {
 
 function parseXml(text: string): DataValue {
   if (/<!DOCTYPE/i.test(text)) {
-    throw new Error('不允许包含 DOCTYPE 的 XML');
+    throw new Error('convert.errors.xmlDoctypeForbidden');
   }
   try {
     SyntaxValidator.validate(text);
   } catch (error: unknown) {
-    throw new Error(`XML 解析失败：${xmlValidationMessage(error)}`, { cause: error });
+    throw new Error('convert.errors.xmlParseFailed', { cause: error });
   }
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -216,7 +216,7 @@ function parseXml(text: string): DataValue {
 
 function stringifyXml(value: DataValue): string {
   if (!isDataObject(value)) {
-    throw new Error('XML 输出要求根数据为对象');
+    throw new Error('convert.errors.xmlRootMustBeObject');
   }
   const builder = new XMLBuilder({
     format: true,
@@ -226,7 +226,7 @@ function stringifyXml(value: DataValue): string {
   });
   const output: unknown = builder.build(mutableValue(value));
   if (typeof output !== 'string') {
-    throw new Error('XML 生成器未返回文本');
+    throw new Error('convert.errors.xmlBuilderOutputMissing');
   }
   return output;
 }
@@ -246,7 +246,7 @@ function parseTable(text: string, delimiter: ',' | '\t'): DataValue {
   });
   const error = result.errors[0];
   if (error !== undefined) {
-    throw new Error(`${delimiter === ',' ? 'CSV' : 'TSV'} 解析失败：${error.message}`);
+    throw new Error('convert.errors.tableParseFailed', { cause: error });
   }
   return normalizeValue(result.data);
 }
@@ -258,7 +258,7 @@ function stringifyTable(value: DataValue, delimiter: ',' | '\t'): string {
   } else if (isDataObject(value)) {
     rows = [mutableValue(value)];
   } else {
-    throw new Error(`${delimiter === ',' ? 'CSV' : 'TSV'} 输出要求数组或对象`);
+    throw new Error('convert.errors.tableRequiresArrayOrObject');
   }
   return Papa.unparse(rows, {
     delimiter,
@@ -270,7 +270,7 @@ function stringifyTable(value: DataValue, delimiter: ',' | '\t'): string {
 function parseIni(text: string): DataValue {
   const root: Record<string, DataValue> = Object.create(null) as Record<string, DataValue>;
   let current = root;
-  for (const [index, sourceLine] of text.replaceAll('\r\n', '\n').split('\n').entries()) {
+  for (const sourceLine of text.replaceAll('\r\n', '\n').split('\n')) {
     const line = sourceLine.trim();
     if (line === '' || line.startsWith(';') || line.startsWith('#')) {
       continue;
@@ -278,7 +278,7 @@ function parseIni(text: string): DataValue {
     const section = /^\[([^\]]+)]$/.exec(line);
     if (section !== null) {
       const name = section[1]?.trim() ?? '';
-      assertSafeKey(name, `INI 第 ${String(index + 1)} 行`);
+      assertSafeKey(name);
       const next: Record<string, DataValue> = Object.create(null) as Record<string, DataValue>;
       root[name] = next;
       current = next;
@@ -286,10 +286,10 @@ function parseIni(text: string): DataValue {
     }
     const separator = line.search(/[=:]/);
     if (separator <= 0) {
-      throw new Error(`INI 第 ${String(index + 1)} 行缺少键值分隔符`);
+      throw new Error('convert.errors.iniMissingSeparator');
     }
     const key = line.slice(0, separator).trim();
-    assertSafeKey(key, `INI 第 ${String(index + 1)} 行`);
+    assertSafeKey(key);
     current[key] = parseIniScalar(line.slice(separator + 1).trim());
   }
   return root;
@@ -322,7 +322,7 @@ function queryCodec(format: 'RFC1738' | 'RFC3986'): WebCodec {
     parse: (text) => normalizeValue(qs.parse(text, queryParseOptions())),
     stringify: (value): string => {
       if (!isDataObject(value) && !isDataArray(value)) {
-        throw new Error('Query String 输出要求数组或对象');
+        throw new Error('convert.errors.queryRequiresArrayOrObject');
       }
       return qs.stringify(mutableValue(value), {
         allowDots: false,
@@ -355,7 +355,7 @@ function parseCookie(text: string): DataValue {
     const rawKey = separator === -1 ? trimmed : trimmed.slice(0, separator);
     const rawValue = separator === -1 ? '' : trimmed.slice(separator + 1);
     const key = decodeURIComponent(rawKey.trim());
-    assertSafeKey(key, 'Cookie');
+    assertSafeKey(key);
     output[key] = decodeURIComponent(rawValue);
   }
   return output;
@@ -363,7 +363,7 @@ function parseCookie(text: string): DataValue {
 
 function stringifyCookie(value: DataValue): string {
   if (!isDataObject(value)) {
-    throw new Error('Cookie 输出要求对象');
+    throw new Error('convert.errors.cookieRequiresObject');
   }
   return Object.entries(value)
     .map(
@@ -397,7 +397,7 @@ function parsePostmanBulk(text: string): DataValue {
 
 function stringifyPostmanBulk(value: DataValue): string {
   if (!isDataObject(value) && !isDataArray(value)) {
-    throw new Error('Postman Bulk 输出要求数组或对象');
+    throw new Error('convert.errors.postmanRequiresArrayOrObject');
   }
   const query = qs.stringify(mutableValue(value), {
     allowDots: false,
@@ -460,7 +460,7 @@ function parseJwt(text: string): DataValue {
     parts[1] === undefined ||
     parts[2] === undefined
   ) {
-    throw new Error('JWT 必须包含三个 Base64URL 段');
+    throw new Error('convert.errors.jwtSegments');
   }
   return normalizeValue({
     headers: JSON.parse(decodeBase64Url(parts[0])) as unknown,
@@ -482,7 +482,7 @@ function encodeBase64Bytes(bytes: Uint8Array): string {
 function decodeBase64(text: string): string {
   const cleaned = text.replaceAll(/\s/g, '');
   if (cleaned === '' || !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned) || cleaned.length % 4 !== 0) {
-    throw new Error('无效的 Base64 文本');
+    throw new Error('convert.errors.invalidBase64');
   }
   return decodeBase64Binary(cleaned);
 }
@@ -502,7 +502,7 @@ function decodeBase64Binary(text: string): string {
 function decodeBase64Gzip(text: string): string {
   const cleaned = text.replaceAll(/\s/g, '');
   if (cleaned === '' || !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
-    throw new Error('无效的 Base64 + Gzip 文本');
+    throw new Error('convert.errors.invalidBase64Gzip');
   }
   const binary = atob(cleaned);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -531,26 +531,8 @@ function isDataObject(value: DataValue): value is Readonly<Record<string, DataVa
   return typeof value === 'object' && value !== null && !isDataArray(value);
 }
 
-function xmlValidationMessage(value: unknown): string {
-  if (value instanceof Error) {
-    return value.message;
-  }
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'err' in value &&
-    typeof value.err === 'object' &&
-    value.err !== null &&
-    'msg' in value.err &&
-    typeof value.err.msg === 'string'
-  ) {
-    return value.err.msg;
-  }
-  return 'XML 语法不合法';
-}
-
-function assertSafeKey(key: string, context: string): void {
+function assertSafeKey(key: string): void {
   if (key === '' || FORBIDDEN_OBJECT_KEYS.has(key)) {
-    throw new Error(`${context} 包含不允许的键：${key || '<empty>'}`);
+    throw new Error('convert.errors.forbiddenKey');
   }
 }

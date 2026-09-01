@@ -166,10 +166,10 @@ export function createTileOrigins(
 ): readonly TileOrigin[] {
   const values = [canvasWidth, canvasHeight, markWidth, markHeight];
   if (values.some((value) => !Number.isFinite(value) || value <= 0)) {
-    throw new Error('watermark dimensions must be positive');
+    throw new Error('watermark.errors.invalidDimensions');
   }
   if (![gapX, gapY, offsetX, offsetY].every((value) => Number.isFinite(value))) {
-    throw new Error('watermark layout values must be finite');
+    throw new Error('watermark.errors.invalidLayout');
   }
 
   const radius =

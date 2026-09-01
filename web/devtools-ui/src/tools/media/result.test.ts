@@ -22,14 +22,14 @@ describe('native media result validation', () => {
   });
 
   it.each([null, {}, { words: null }])('rejects invalid OCR envelope %#', (value) => {
-    expect(() => parseOcrResult(value)).toThrow('无效结果');
+    expect(() => parseOcrResult(value)).toThrow('ui.ocrReturnedAnInvalidResult');
   });
 
   it.each([
     { fullText: null, averageConfidence: 1, words: [] },
     { fullText: '', averageConfidence: null, words: [] },
   ])('rejects invalid OCR summary %#', (value) => {
-    expect(() => parseOcrResult(value)).toThrow('无效结果');
+    expect(() => parseOcrResult(value)).toThrow('ui.ocrReturnedAnInvalidResult');
   });
 
   it.each([
@@ -42,18 +42,20 @@ describe('native media result validation', () => {
     { ...validWord, height: null },
   ])('rejects invalid OCR word %#', (word) => {
     expect(() => parseOcrResult({ fullText: '', averageConfidence: 0, words: [word] })).toThrow(
-      '无效文字框',
+      'ui.ocrReturnedAnInvalidTextBox',
     );
   });
 
   it.each([null, {}, { codes: null }])('rejects invalid barcode envelope %#', (value) => {
-    expect(() => parseBarcodeResult(value)).toThrow('无效结果');
+    expect(() => parseBarcodeResult(value)).toThrow('ui.barcodeRecognitionReturnedAnInvalidResult');
   });
 
   it.each([null, { codeType: null, data: '' }, { codeType: 'QR-Code', data: null }])(
     'rejects invalid barcode item %#',
     (item) => {
-      expect(() => parseBarcodeResult({ codes: [item] })).toThrow('无效结果');
+      expect(() => parseBarcodeResult({ codes: [item] })).toThrow(
+        'ui.barcodeRecognitionReturnedAnInvalidResult',
+      );
     },
   );
 });

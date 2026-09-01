@@ -15,7 +15,7 @@ export type JsonTreeNode = {
 export function parseJson(raw: string): JsonValue {
   const value: unknown = JSON.parse(raw);
   if (!isJsonValue(value)) {
-    throw new TypeError('输入不是有效的 JSON 值');
+    throw new TypeError('convert.errors.invalidJsonValue');
   }
   return value;
 }

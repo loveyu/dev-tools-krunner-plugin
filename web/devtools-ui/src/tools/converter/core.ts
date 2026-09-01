@@ -19,7 +19,7 @@ async function parseSource(
 ): Promise<DataValue> {
   const definition = definitionOf(format);
   if (!definition.canParse) {
-    throw new Error(`${definition.label} 不支持作为来源格式`);
+    throw new Error('convert.errors.sourceFormatNotParsable');
   }
   if (definition.runtime === 'native') {
     const canonical = await nativeExecutor({
@@ -31,7 +31,7 @@ async function parseSource(
   }
   const codec = requireWebCodec(format);
   if (codec.parse === undefined) {
-    throw new Error(`${definition.label} 缺少来源解析器`);
+    throw new Error('convert.errors.missingSourceCodec');
   }
   return codec.parse(text);
 }
@@ -43,7 +43,7 @@ async function stringifyTarget(
 ): Promise<string> {
   const definition = definitionOf(format);
   if (!definition.canStringify) {
-    throw new Error(`${definition.label} 不支持作为目标格式`);
+    throw new Error('convert.errors.targetFormatNotStringifiable');
   }
   if (definition.runtime === 'native') {
     return nativeExecutor({
@@ -54,7 +54,7 @@ async function stringifyTarget(
   }
   const codec = requireWebCodec(format);
   if (codec.stringify === undefined) {
-    throw new Error(`${definition.label} 缺少目标生成器`);
+    throw new Error('convert.errors.missingTargetCodec');
   }
   return codec.stringify(value);
 }
@@ -62,7 +62,7 @@ async function stringifyTarget(
 function requireWebCodec(format: FormatId): WebCodec {
   const codec = WEB_CODECS[format];
   if (codec === undefined) {
-    throw new Error(`没有注册 Web 转换器：${format}`);
+    throw new Error('convert.errors.webCodecMissing');
   }
   return codec;
 }

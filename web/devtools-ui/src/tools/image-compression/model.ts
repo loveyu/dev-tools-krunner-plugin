@@ -8,10 +8,10 @@ export const MAX_OUTPUT_PIXELS = 40_000_000;
 
 export function validateCompressionFileMetadata(type: string, size: number): string | null {
   if (!(COMPRESSION_IMAGE_TYPES as readonly string[]).includes(type)) {
-    return '仅支持 PNG、JPEG、WebP、BMP 和 GIF 图片';
+    return 'ui.onlyPngJpegWebpBmpAndGifImagesAreSupported';
   }
-  if (size <= 0) return '图片内容为空';
-  if (size > MAX_COMPRESSION_IMAGE_BYTES) return '图片不能超过 25 MiB';
+  if (size <= 0) return 'ui.theImageIsEmpty';
+  if (size > MAX_COMPRESSION_IMAGE_BYTES) return 'ui.theImageMustNotExceed25Mib';
   return null;
 }
 
@@ -35,7 +35,7 @@ export function containedDimensions(
   assertPositiveDimensions(sourceWidth, sourceHeight);
   assertPositiveDimensions(maxWidth, maxHeight);
   if (maxWidth > MAX_OUTPUT_DIMENSION || maxHeight > MAX_OUTPUT_DIMENSION) {
-    throw new Error(`输出宽高不能超过 ${String(MAX_OUTPUT_DIMENSION)} px`);
+    throw new Error('convert.errors.dimensionsTooLarge');
   }
   const scale = Math.min(
     1,
@@ -88,7 +88,7 @@ function extensionForType(mimeType: OutputImageType): string {
 
 function assertPositiveDimensions(width: number, height: number): void {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw new Error('图片宽高必须是正数');
+    throw new Error('ui.imageDimensionsMustBePositive');
   }
 }
 

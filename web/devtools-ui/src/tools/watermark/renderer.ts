@@ -44,7 +44,7 @@ export function composeWatermark(input: WatermarkRenderInput): HTMLCanvasElement
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
-  if (context === null) throw new Error('watermark.errors.canvasUnavailable');
+  if (context === null) throw new Error('errors.canvasUnavailable');
 
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
@@ -131,7 +131,7 @@ function buildTextBlock(lines: readonly string[], style: TextStyle, scale: numbe
   canvas.width = Math.ceil(textWidth + fontSize * TEXT_SHADOW_BLUR_RATIO * 2);
   canvas.height = Math.ceil(lineHeight * lines.length + fontSize * TEXT_SHADOW_BLUR_RATIO);
   const context = canvas.getContext('2d');
-  if (context === null) throw new Error('watermark.errors.canvasUnavailable');
+  if (context === null) throw new Error('errors.canvasUnavailable');
 
   context.font = font;
   context.textBaseline = 'middle';
@@ -221,7 +221,7 @@ function drawMaskedWatermarks(
   mask.width = width;
   mask.height = height;
   const maskContext = mask.getContext('2d');
-  if (maskContext === null) throw new Error('watermark.errors.canvasUnavailable');
+  if (maskContext === null) throw new Error('errors.canvasUnavailable');
 
   maskContext.fillStyle = `rgba(0, 0, 0, ${String(KEEP_VISIBLE_MASK_ALPHA)})`;
   maskContext.fillRect(0, 0, width, height);
@@ -252,7 +252,7 @@ export async function loadImageElement(file: File): Promise<HTMLImageElement> {
         resolve();
       };
       image.onerror = (): void => {
-        reject(new Error('watermark.errors.imageDecodeFailed'));
+        reject(new Error('errors.imageDecodeFailed'));
       };
     });
     return image;
@@ -270,7 +270,7 @@ async function encodeCanvas(
     canvas.toBlob(
       (blob) => {
         if (blob === null) {
-          reject(new Error('watermark.errors.imageEncodeFailed'));
+          reject(new Error('errors.imageEncodeFailed'));
           return;
         }
         resolve(blob);

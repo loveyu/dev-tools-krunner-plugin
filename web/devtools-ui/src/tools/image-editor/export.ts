@@ -4,7 +4,7 @@ export type EditorExportFormat = (typeof EDITOR_EXPORT_FORMATS)[number];
 
 export function dataUrlToBlob(dataUrl: string): Blob {
   const match = /^data:(image\/(?:png|jpeg));base64,([a-z\d+/=]+)$/i.exec(dataUrl);
-  if (match === null) throw new Error('编辑器返回了无效的图片数据');
+  if (match === null) throw new Error('ui.theEditorReturnedInvalidImageData');
   const [, mimeType, payload] = match as unknown as [string, string, string];
   const binary = atob(payload);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));

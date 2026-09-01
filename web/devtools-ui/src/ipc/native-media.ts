@@ -36,7 +36,7 @@ function executeMediaProcessing(request: MediaProcessingRequest): Promise<unknow
     nextRequestId += 1;
     const timeout = window.setTimeout(() => {
       pending.delete(requestId);
-      reject(new Error('图片处理超时'));
+      reject(new Error('ipc.errors.mediaTimeout'));
     }, 45_000);
     pending.set(requestId, { resolve, reject, timeout });
     const posted = postRequest({
@@ -50,7 +50,7 @@ function executeMediaProcessing(request: MediaProcessingRequest): Promise<unknow
     if (!posted) {
       window.clearTimeout(timeout);
       pending.delete(requestId);
-      reject(new Error('当前环境未提供图片处理 IPC'));
+      reject(new Error('ipc.errors.mediaUnavailable'));
     }
   });
 }
@@ -66,7 +66,7 @@ function handleMediaResult(event: Event): void {
   } else if (event.detail.result !== null) {
     request.resolve(event.detail.result);
   } else {
-    request.reject(new Error('图片处理未返回结果'));
+    request.reject(new Error('ipc.errors.mediaEmptyResult'));
   }
 }
 

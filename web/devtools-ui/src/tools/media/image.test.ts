@@ -10,9 +10,13 @@ import {
 
 describe('media image preparation', () => {
   it('validates supported image metadata and size limits', () => {
-    expect(validateImageMetadata('text/plain', 1)).toContain('仅支持');
-    expect(validateImageMetadata('image/png', 0)).toContain('为空');
-    expect(validateImageMetadata('image/png', MAX_IMAGE_BYTES + 1)).toContain('10 MiB');
+    expect(validateImageMetadata('text/plain', 1)).toContain(
+      'ui.onlyPngJpegBmpTiffWebpAndGifImagesAre',
+    );
+    expect(validateImageMetadata('image/png', 0)).toContain('ui.theImageIsEmpty');
+    expect(validateImageMetadata('image/png', MAX_IMAGE_BYTES + 1)).toContain(
+      'ui.theImageMustNotExceed10Mib',
+    );
     expect(validateImageMetadata('image/jpeg', 20)).toBeNull();
   });
 
@@ -35,7 +39,7 @@ describe('media image preparation', () => {
   it('rejects an invalid browser file', async () => {
     const file = new File(['text'], 'sample.txt', { type: 'text/plain' });
 
-    await expect(prepareImage(file)).rejects.toThrow('仅支持');
+    await expect(prepareImage(file)).rejects.toThrow('ui.onlyPngJpegBmpTiffWebpAndGifImagesAre');
   });
 
   it('selects the first image file', () => {

@@ -48,7 +48,8 @@ async function chooseFile(): Promise<void> {
     document.value = await pickAndReadMetadata();
   } catch (caught) {
     const text = caught instanceof Error ? caught.message : String(caught);
-    if (text !== 'file selection was cancelled') error.value = text;
+    // 取消选择不是错误：Rust 侧以固定文案回传，按原文判断后再翻译展示。
+    if (text !== 'file selection was cancelled') error.value = t(text);
   } finally {
     loading.value = false;
   }
@@ -68,7 +69,7 @@ async function readPastedImage(image: File): Promise<void> {
   try {
     document.value = await readImageMetadata(await prepareImage(image));
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : String(caught);
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     loading.value = false;
   }

@@ -19,13 +19,13 @@ export function pickScreenColor(): Promise<PickedColor | null> {
     nextRequestId += 1;
     const timeout = window.setTimeout(() => {
       pending.delete(requestId);
-      reject(new Error('屏幕取色超时'));
+      reject(new Error('ipc.errors.colorPickTimeout'));
     }, 120_000);
     pending.set(requestId, { resolve, reject, timeout });
     if (!postRequest({ type: 'colorPick', requestId })) {
       window.clearTimeout(timeout);
       pending.delete(requestId);
-      reject(new Error('当前环境未提供屏幕取色 IPC'));
+      reject(new Error('ipc.errors.colorPickUnavailable'));
     }
   });
 }

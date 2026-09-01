@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { NButton, NButtonGroup, NCard, NEmpty, NInput, NTag, useMessage } from 'naive-ui';
+import { NAlert, NButton, NButtonGroup, NCard, NEmpty, NInput, NTag, useMessage } from 'naive-ui';
 
 import CodeEditor from '../components/CodeEditor.vue';
 import JsonTreeNode from '../components/JsonTreeNode.vue';
 import { useI18n } from '../i18n/runtime';
 import { postRequest } from '../ipc/bridge';
+import type { JsonValue } from '../tools/json/model';
 import {
   buildJsonTree,
   countMatches,
@@ -31,13 +32,27 @@ const message = useMessage();
 const { t } = useI18n();
 const search = ref<string>('');
 const outputMode = ref<OutputMode>('formatted');
-const value = computed(() => parseJson(props.payload));
-const tree = computed(() => buildJsonTree(value.value));
-const filteredTree = computed(() => filterJsonTree(tree.value, search.value));
-const matchCount = computed(() => countMatches(tree.value, search.value));
-const output = computed(() =>
-  outputMode.value === 'formatted' ? formatJson(value.value) : minifyJson(value.value),
+// OpenTool 是 session 总线公开接口，payload 可能不是合法 JSON；
+// computed 求值抛错会打断渲染，这里兜底为 null 并单独提示。
+const value = computed<{ readonly data: JsonValue | null; readonly error: string | null }>(() => {
+  try {
+    return { data: parseJson(props.payload), error: null };
+  } catch {
+    return { data: null, error: 'ui.invalidJsonPayload' };
+  }
+});
+const tree = computed(() => (value.value.data === null ? null : buildJsonTree(value.value.data)));
+const filteredTree = computed(() =>
+  tree.value === null ? null : filterJsonTree(tree.value, search.value),
 );
+const matchCount = computed(() =>
+  tree.value === null ? 0 : countMatches(tree.value, search.value),
+);
+const output = computed(() => {
+  const data = value.value.data;
+  if (data === null) return '';
+  return outputMode.value === 'formatted' ? formatJson(data) : minifyJson(data);
+});
 
 watch(
   () => props.payload,
@@ -80,6 +95,8 @@ function copyOutput(): void {
         <NButton secondary @click="emit('convert', output)">{{ t('ui.dataConversion') }}</NButton>
       </NButtonGroup>
     </header>
+
+    <NAlert v-if="value.error !== null" type="error">{{ t(value.error) }}</NAlert>
 
     <section class="workbench__search">
       <NInput v-model:value="search" clearable :placeholder="t('ui.searchKeysPathsOrValues')" />

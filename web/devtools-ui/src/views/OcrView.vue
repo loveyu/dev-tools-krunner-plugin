@@ -120,7 +120,7 @@ async function selectFile(file: File): Promise<void> {
     imageWidth.value = 0;
     imageHeight.value = 0;
   } catch (caught: unknown) {
-    error.value = caught instanceof Error ? caught.message : String(caught);
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     busy.value = false;
   }

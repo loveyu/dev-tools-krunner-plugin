@@ -23,14 +23,14 @@ export function decryptText(
   validateInputs(ciphertext, passphrase);
   const normalizedCiphertext = ciphertext.trim();
   if (!normalizedCiphertext.startsWith('U2FsdGVkX1')) {
-    throw new Error('Ciphertext must be OpenSSL salted Base64');
+    throw new Error('crypto.errors.saltedCiphertextRequired');
   }
   try {
     return cipherFor(algorithm)
       .decrypt(normalizedCiphertext, passphrase)
       .toString(CryptoJS.enc.Utf8);
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : 'Unable to decrypt ciphertext', {
+    throw new Error(error instanceof Error ? error.message : 'crypto.errors.decryptFailed', {
       cause: error,
     });
   }
@@ -59,6 +59,6 @@ function cipherFor(algorithm: CipherAlgorithm): Cipher {
 }
 
 function validateInputs(value: string, passphrase: string): void {
-  if (value === '') throw new Error('Input must not be empty');
-  if (passphrase === '') throw new Error('Passphrase must not be empty');
+  if (value === '') throw new Error('crypto.errors.emptyInput');
+  if (passphrase === '') throw new Error('crypto.errors.emptyPassphrase');
 }

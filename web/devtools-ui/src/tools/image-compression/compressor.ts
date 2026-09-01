@@ -24,7 +24,7 @@ export async function compressImage(
   canvas.width = dimensions.width;
   canvas.height = dimensions.height;
   const context = canvas.getContext('2d');
-  if (context === null) throw new Error('当前 WebView 无法创建图片画布');
+  if (context === null) throw new Error('errors.canvasUnavailable');
 
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
@@ -52,7 +52,7 @@ async function loadImage(file: File): Promise<HTMLImageElement> {
         resolve();
       };
       image.onerror = (): void => {
-        reject(new Error('WebView 无法解码这张图片'));
+        reject(new Error('errors.imageDecodeFailed'));
       };
     });
     return image;
@@ -66,7 +66,7 @@ async function encodeCanvas(canvas: HTMLCanvasElement, options: CompressionOptio
     canvas.toBlob(
       (blob) => {
         if (blob === null) {
-          reject(new Error('图片编码失败，请尝试减小输出尺寸'));
+          reject(new Error('errors.imageEncodeFailed'));
           return;
         }
         resolve(blob);

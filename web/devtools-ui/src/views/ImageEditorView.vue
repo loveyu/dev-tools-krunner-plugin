@@ -15,6 +15,7 @@ import type { EditorExportFormat } from '../tools/image-editor/export';
 import { validateCompressionFileMetadata } from '../tools/image-compression/model';
 import { COMPRESSION_IMAGE_TYPES } from '../tools/image-compression/types';
 import { firstImageFile } from '../tools/media/image';
+import { downloadBlob } from '../tools/media/download';
 
 defineOptions({ name: 'ImageEditorView' });
 
@@ -162,12 +163,7 @@ function exportEditedImage(): void {
         quality: normalizeExportQuality(exportQuality.value ?? 92),
       }),
     );
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = editedImageFilename(sourceName.value, format);
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, editedImageFilename(sourceName.value, format));
     message.success(t('ui.exportedFormat', { format: format === 'jpeg' ? 'JPEG' : 'PNG' }));
   } catch (caught: unknown) {
     error.value = t(errorMessage(caught));

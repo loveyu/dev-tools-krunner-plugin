@@ -41,7 +41,7 @@ function runEncrypt(): void {
       encryptPassphrase.value,
     );
   } catch (error) {
-    encryptError.value = error instanceof Error ? error.message : String(error);
+    encryptError.value = t(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -54,7 +54,7 @@ function runDecrypt(): void {
       decryptPassphrase.value,
     );
   } catch (error) {
-    decryptError.value = error instanceof Error ? error.message : String(error);
+    decryptError.value = t(error instanceof Error ? error.message : String(error));
   }
 }
 

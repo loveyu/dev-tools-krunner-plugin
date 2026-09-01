@@ -21,7 +21,7 @@ export const executeNativeConversion: NativeExecutor = (
     nextRequestId += 1;
     const timeout = window.setTimeout(() => {
       pending.delete(requestId);
-      reject(new Error('本地转换执行超时'));
+      reject(new Error('ipc.errors.nativeConvertTimeout'));
     }, 10_000);
     pending.set(requestId, { resolve, reject, timeout });
 
@@ -35,7 +35,7 @@ export const executeNativeConversion: NativeExecutor = (
     if (!posted) {
       window.clearTimeout(timeout);
       pending.delete(requestId);
-      reject(new Error('当前环境未提供本地转换 IPC'));
+      reject(new Error('ipc.errors.nativeConvertUnavailable'));
     }
   });
 
@@ -50,7 +50,7 @@ function handleNativeResult(event: Event): void {
   } else if (event.detail.result !== null) {
     request.resolve(event.detail.result);
   } else {
-    request.reject(new Error('本地转换未返回结果'));
+    request.reject(new Error('ipc.errors.nativeConvertEmptyResult'));
   }
 }
 

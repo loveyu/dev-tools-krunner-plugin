@@ -29,14 +29,18 @@ describe('barcode generator options', () => {
   });
 
   it('rejects empty content', () => {
-    expect(() => buildBarcodeOptions(request({ text: '  ' }))).toThrow('请输入');
+    expect(() => buildBarcodeOptions(request({ text: '  ' }))).toThrow('ui.enterContentToEncode');
   });
 
   it.each([0, 9, 1.5])('rejects invalid scale %s', (scale) => {
-    expect(() => buildBarcodeOptions(request({ scale }))).toThrow('缩放');
+    expect(() => buildBarcodeOptions(request({ scale }))).toThrow(
+      'ui.scaleMustBeAnIntegerFrom1To8',
+    );
   });
 
   it('rejects invalid EAN-13 data', () => {
-    expect(() => buildBarcodeOptions(request({ format: 'ean13', text: 'abc' }))).toThrow('EAN-13');
+    expect(() => buildBarcodeOptions(request({ format: 'ean13', text: 'abc' }))).toThrow(
+      'ui.ean13Requires12DigitsOr13DigitsIncludingThe',
+    );
   });
 });

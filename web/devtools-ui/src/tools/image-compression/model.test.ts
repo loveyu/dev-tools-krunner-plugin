@@ -18,10 +18,12 @@ describe('validateCompressionFileMetadata', () => {
   });
 
   it('rejects unsupported, empty and oversized images', () => {
-    expect(validateCompressionFileMetadata('image/tiff', 128)).toContain('仅支持');
-    expect(validateCompressionFileMetadata('image/png', 0)).toContain('为空');
+    expect(validateCompressionFileMetadata('image/tiff', 128)).toContain(
+      'ui.onlyPngJpegWebpBmpAndGifImagesAreSupported',
+    );
+    expect(validateCompressionFileMetadata('image/png', 0)).toContain('ui.theImageIsEmpty');
     expect(validateCompressionFileMetadata('image/png', MAX_COMPRESSION_IMAGE_BYTES + 1)).toContain(
-      '25 MiB',
+      'ui.theImageMustNotExceed25Mib',
     );
   });
 });
@@ -42,9 +44,13 @@ describe('dimensions', () => {
   });
 
   it('rejects invalid or excessive dimensions', () => {
-    expect(() => initialTargetDimensions(0, 100)).toThrow('正数');
-    expect(() => containedDimensions(100, 100, Number.NaN, 100)).toThrow('正数');
-    expect(() => containedDimensions(100, 100, 9000, 100)).toThrow('8192');
+    expect(() => initialTargetDimensions(0, 100)).toThrow('ui.imageDimensionsMustBePositive');
+    expect(() => containedDimensions(100, 100, Number.NaN, 100)).toThrow(
+      'ui.imageDimensionsMustBePositive',
+    );
+    expect(() => containedDimensions(100, 100, 9000, 100)).toThrow(
+      'convert.errors.dimensionsTooLarge',
+    );
   });
 
   it('never rounds a scaled side down to zero', () => {

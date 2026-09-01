@@ -67,6 +67,8 @@ function handleHexChange(): void {
 }
 
 async function pickFromScreen(): Promise<void> {
+  // 屏幕取色进行中不允许重复触发，避免并发 IPC 与状态互相覆盖。
+  if (picking.value) return;
   picking.value = true;
   error.value = null;
   try {
@@ -76,7 +78,7 @@ async function pickFromScreen(): Promise<void> {
       message.success(t('color.messages.picked'));
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : String(caught);
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     picking.value = false;
   }
