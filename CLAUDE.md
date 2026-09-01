@@ -88,7 +88,9 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
   about/devtools 协议与 loopback 调试服务器），防止应用外壳被外部站点顶替。
 - Worker 业务层固定为 `Application -> WindowManager -> WebViewManager / IPC -> Platform`；业务模块
   不得出现操作系统条件编译或 GTK/WebKitGTK/WebView2 API。`target_os` 选择只能位于
-  `src/platform/mod.rs`，Linux 与 Windows 具体实现分别放在 `platform/linux.rs`、`platform/windows.rs`。
+  `src/platform/mod.rs`，Linux 与 Windows 具体实现分别放在 `platform/linux/`、`platform/windows.rs`；
+  Linux 按功能域再分为 `linux/mod.rs`（WebView/剪贴板/取色/XDG 目录）、`shortcut_portal.rs`、
+  `quick_input.rs`、`tray.rs`、`ipc_service.rs`。
 - 托盘基于 KDE StatusNotifierItem，菜单固定为设置/重启/退出。配置位于
   `$XDG_CONFIG_HOME/devtools/settings.json`（默认 `~/.config/devtools/settings.json`）；开机启动入口为
   `$XDG_CONFIG_HOME/autostart/org.loveyu.DevTools.desktop`。主题设置支持跟随系统（默认）、浅色和深色；
