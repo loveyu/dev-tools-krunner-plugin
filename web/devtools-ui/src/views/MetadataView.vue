@@ -151,15 +151,18 @@ function copyJson(): void {
 <style scoped lang="scss">
 .metadata-view {
   display: grid;
-  gap: 1rem;
-  margin: 0 auto;
-  max-width: 74rem;
-  padding: 1.5rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
+  padding-inline: max(var(--page-padding), calc((100% - 74rem) / 2));
 
   header,
   &__toolbar {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     justify-content: space-between;
 
@@ -178,6 +181,25 @@ function copyJson(): void {
     display: grid;
     gap: 0.75rem;
     margin-top: 1rem;
+  }
+
+  &__toolbar {
+    :deep(.n-space:first-child) {
+      min-width: 0;
+
+      strong {
+        overflow-wrap: anywhere;
+      }
+    }
+
+    :deep(.n-space:last-child) {
+      flex: 1 1 20rem;
+      justify-content: flex-end;
+
+      .n-input {
+        flex: 1 1 14rem;
+      }
+    }
   }
 
   dl {
@@ -200,6 +222,40 @@ function copyJson(): void {
     gap: 0.75rem;
     justify-content: space-between;
     overflow-wrap: anywhere;
+  }
+}
+
+@media (width <= 720px) {
+  .metadata-view {
+    header,
+    &__toolbar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    &__toolbar :deep(.n-space:last-child) {
+      justify-content: flex-start;
+      width: 100%;
+    }
+  }
+}
+
+@media (width <= 600px) {
+  .metadata-view {
+    dl {
+      grid-template-columns: 1fr;
+    }
+
+    dt {
+      border-bottom: 0;
+      color: var(--muted-color);
+      font-size: 0.78rem;
+      padding-bottom: 0.2rem;
+    }
+
+    dd {
+      padding-top: 0.2rem;
+    }
   }
 }
 </style>

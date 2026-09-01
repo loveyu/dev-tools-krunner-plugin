@@ -299,9 +299,11 @@ function releasePreview(): void {
 <style scoped lang="scss">
 .media-view {
   display: grid;
-  gap: 1rem;
-  min-height: 100%;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header,
   &__toolbar,
@@ -312,6 +314,7 @@ function releasePreview(): void {
   }
 
   &__header {
+    flex-wrap: wrap;
     justify-content: space-between;
 
     h1,
@@ -326,14 +329,15 @@ function releasePreview(): void {
   }
 
   &__toolbar {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 
     :deep(.n-select) {
-      min-width: 11rem;
+      min-width: 0;
     }
 
     :deep(.n-input-number) {
-      width: 10rem;
+      width: 100%;
     }
   }
 
@@ -345,6 +349,7 @@ function releasePreview(): void {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    min-height: 0;
   }
 
   &__panel {
@@ -354,7 +359,7 @@ function releasePreview(): void {
   &__drop-zone {
     cursor: pointer;
     display: grid;
-    min-height: 31rem;
+    min-height: clamp(18rem, 56vh, 31rem);
     place-items: center;
   }
 
@@ -379,6 +384,7 @@ function releasePreview(): void {
   }
 
   &__result-header {
+    flex-wrap: wrap;
     justify-content: space-between;
   }
 
@@ -389,22 +395,21 @@ function releasePreview(): void {
 
 @media (width <= 920px) {
   .media-view {
-    &__header,
-    &__toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
     &__panels {
       grid-template-columns: 1fr;
     }
+  }
+}
+
+@media (width <= 600px) {
+  .media-view {
+    &__header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
 
     &__toolbar {
-      :deep(.n-input-number),
-      :deep(.n-select) {
-        min-width: 0;
-        width: 100%;
-      }
+      grid-template-columns: 1fr;
     }
   }
 }

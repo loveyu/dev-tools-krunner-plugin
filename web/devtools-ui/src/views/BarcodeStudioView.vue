@@ -322,9 +322,11 @@ function releasePreview(): void {
 <style scoped lang="scss">
 .barcode-studio {
   display: grid;
-  gap: 1rem;
-  min-height: 100%;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header,
   &__actions,
@@ -335,6 +337,7 @@ function releasePreview(): void {
   }
 
   &__header {
+    flex-wrap: wrap;
     justify-content: space-between;
 
     h1,
@@ -353,6 +356,11 @@ function releasePreview(): void {
     gap: 1rem;
   }
 
+  &__actions,
+  &__code-header {
+    flex-wrap: wrap;
+  }
+
   &__file-input {
     display: none;
   }
@@ -361,6 +369,7 @@ function releasePreview(): void {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
   }
 
   &__panel {
@@ -370,7 +379,7 @@ function releasePreview(): void {
   &__drop-zone {
     cursor: pointer;
     display: grid;
-    min-height: 28rem;
+    min-height: clamp(18rem, 54vh, 30rem);
     place-items: center;
 
     img {
@@ -409,7 +418,7 @@ function releasePreview(): void {
 
   &__canvas-wrap {
     display: grid;
-    min-height: 22rem;
+    min-height: clamp(15rem, 45vh, 24rem);
     overflow: auto;
     place-items: center;
 
@@ -419,7 +428,7 @@ function releasePreview(): void {
   }
 }
 
-@media (width <= 860px) {
+@media (width <= 900px) {
   .barcode-studio {
     &__header {
       align-items: flex-start;

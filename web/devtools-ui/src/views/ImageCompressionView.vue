@@ -380,13 +380,17 @@ function errorMessage(caught: unknown): string {
 <style scoped lang="scss">
 .image-compression {
   display: grid;
-  gap: 1rem;
-  min-height: 100%;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     justify-content: space-between;
 
     h1,
@@ -408,6 +412,7 @@ function errorMessage(caught: unknown): string {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr);
+    min-height: 0;
   }
 
   &__settings,
@@ -443,7 +448,7 @@ function errorMessage(caught: unknown): string {
   &__drop-zone {
     cursor: pointer;
     display: grid;
-    min-height: 34rem;
+    min-height: clamp(18rem, 58vh, 34rem);
     outline: none;
     place-items: center;
   }
@@ -458,7 +463,7 @@ function errorMessage(caught: unknown): string {
       50% / 1rem 1rem;
     border-radius: 0.5rem;
     display: grid;
-    min-height: 30rem;
+    height: clamp(18rem, 56vh, 34rem);
     overflow: hidden;
     place-items: center;
     position: relative;
@@ -516,7 +521,7 @@ function errorMessage(caught: unknown): string {
   }
 }
 
-@media (width <= 900px) {
+@media (width <= 820px) {
   .image-compression {
     &__header {
       align-items: flex-start;
@@ -524,7 +529,21 @@ function errorMessage(caught: unknown): string {
       gap: 0.75rem;
     }
 
-    &__workspace,
+    &__workspace {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+@media (width <= 900px) {
+  .image-compression__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 520px) {
+  .image-compression {
+    &__dimensions,
     &__stats {
       grid-template-columns: 1fr;
     }

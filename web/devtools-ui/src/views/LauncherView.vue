@@ -95,13 +95,16 @@ onMounted(() => input.value?.focus());
 <style scoped lang="scss">
 .launcher-view {
   display: grid;
-  gap: 0.75rem;
-  margin: 0 auto;
-  max-width: 48rem;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--page-padding);
+  padding-inline: max(var(--page-padding), calc((100% - 48rem) / 2));
 
   &__results {
-    max-height: 22rem;
+    min-height: 0;
     overflow: auto;
   }
 
@@ -114,6 +117,7 @@ onMounted(() => input.value?.focus());
 
     p {
       color: var(--muted-color);
+      font-size: 0.78rem;
       margin: 0.2rem 0 0;
     }
 
@@ -126,6 +130,24 @@ onMounted(() => input.value?.focus());
     color: var(--muted-color);
     font-size: 0.8rem;
     text-align: center;
+  }
+}
+
+@media (width <= 520px), (height <= 420px) {
+  .launcher-view {
+    &__result {
+      p {
+        display: none;
+      }
+
+      :deep(.n-tag) {
+        display: none;
+      }
+    }
+
+    footer {
+      display: none;
+    }
   }
 }
 </style>

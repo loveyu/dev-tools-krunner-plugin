@@ -105,14 +105,18 @@ function copyOutput(): void {
 <style scoped lang="scss">
 .workbench {
   display: grid;
-  gap: 1rem;
-  min-height: 100%;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__toolbar,
   &__search {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     justify-content: space-between;
   }
@@ -129,8 +133,17 @@ function copyOutput(): void {
     }
   }
 
-  &__search :deep(.n-input) {
-    max-width: 38rem;
+  &__toolbar :deep(.n-button-group) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  &__search {
+    :deep(.n-input) {
+      flex: 1 1 20rem;
+      max-width: 38rem;
+      min-width: 12rem;
+    }
   }
 
   &__content {
@@ -142,7 +155,11 @@ function copyOutput(): void {
 
   &__panel {
     background: var(--panel-color);
-    min-height: 30rem;
+    min-height: clamp(18rem, 58vh, 34rem);
+
+    :deep(.n-card__content) {
+      overflow: auto;
+    }
   }
 
   &__tree {
@@ -159,16 +176,26 @@ function copyOutput(): void {
   }
 }
 
-@media (width <= 860px) {
+@media (width <= 920px) {
   .workbench {
     &__toolbar {
       align-items: flex-start;
       flex-direction: column;
+
+      :deep(.n-button-group) {
+        width: 100%;
+      }
     }
 
     &__content {
       grid-template-columns: 1fr;
     }
+  }
+}
+
+@media (height <= 620px) and (width > 920px) {
+  .workbench__panel {
+    min-height: 17rem;
   }
 }
 </style>

@@ -180,14 +180,17 @@ function copy(value: string): void {
 <style scoped lang="scss">
 .color-view {
   display: grid;
-  gap: 1rem;
-  margin: 0 auto;
-  max-width: 68rem;
-  padding: 1.5rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
+  padding-inline: max(var(--page-padding), calc((100% - 68rem) / 2));
 
   header {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     justify-content: space-between;
 
@@ -213,7 +216,7 @@ function copy(value: string): void {
       linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
     border-radius: 0.5rem;
     cursor: crosshair;
-    height: 22rem;
+    height: clamp(14rem, 44vh, 22rem);
     position: relative;
     touch-action: none;
   }
@@ -237,7 +240,7 @@ function copy(value: string): void {
   &__preview {
     border: 1px solid var(--border-color);
     border-radius: 0.5rem;
-    height: 10rem;
+    height: clamp(6rem, 20vh, 10rem);
     margin-bottom: 1rem;
   }
 
@@ -267,8 +270,27 @@ function copy(value: string): void {
 }
 
 @media (width <= 820px) {
-  .color-view__workspace {
-    grid-template-columns: 1fr;
+  .color-view {
+    header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    &__workspace {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+@media (height <= 620px) and (width > 820px) {
+  .color-view {
+    &__board {
+      height: 13rem;
+    }
+
+    &__preview {
+      height: 6rem;
+    }
   }
 }
 </style>

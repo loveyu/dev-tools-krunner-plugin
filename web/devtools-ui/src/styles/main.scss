@@ -17,6 +17,10 @@
   --editor-icon-active: #0f172a;
   --editor-icon-disabled: #cbd5e1;
   --font-code: 'JetBrains Mono', 'Cascadia Code', 'Noto Sans Mono', monospace;
+  --app-viewport-height: 100vh;
+  --app-viewport-width: 100vw;
+  --page-gap: clamp(0.7rem, 1.5vmin, 1rem);
+  --page-padding: clamp(0.75rem, 2.2vmin, 1.25rem);
 
   color: #172033;
   color-scheme: light;
@@ -80,14 +84,44 @@
 html,
 body,
 body > div {
+  background: var(--background-color);
+  height: 100%;
   margin: 0;
-  min-height: 100%;
+  min-height: 0;
+  width: 100%;
 }
 
 body {
   background:
     radial-gradient(circle at 15% 10%, rgb(59 130 246 / 10%), transparent 32rem),
     var(--background-color);
+  overflow: hidden;
+}
+
+main {
+  background: var(--background-color);
+  max-width: 100%;
+  width: 100%;
+
+  > header {
+    min-width: 0;
+
+    > :first-child {
+      min-width: 0;
+    }
+
+    h1 {
+      font-size: clamp(1.05rem, 1rem + 0.35vw, 1.3rem);
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+    }
+
+    p {
+      font-size: 0.8rem;
+      line-height: 1.35;
+    }
+  }
 }
 
 button,
@@ -117,7 +151,10 @@ input {
 
 .idle-view {
   display: grid;
-  min-height: 100vh;
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
   place-content: center;
   text-align: center;
 
@@ -126,8 +163,19 @@ input {
     margin: 0;
   }
 
+  h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
   p {
     color: var(--muted-color);
     margin-top: 0.5rem;
+  }
+}
+
+@media (width <= 620px), (height <= 560px) {
+  main > header p {
+    display: none;
   }
 }

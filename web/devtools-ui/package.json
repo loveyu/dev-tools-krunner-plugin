@@ -9,7 +9,8 @@
     "pnpm": ">=11.18.0 <12"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx scripts/dev-worker.ts --frontend-only",
+    "dev:worker": "tsx scripts/dev-worker.ts",
     "build": "vue-tsc --build --force && vite build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

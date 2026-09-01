@@ -262,10 +262,12 @@ function updateMetadataBackend(metadataBackend: MetadataBackend): void {
 <style scoped lang="scss">
 .settings-view {
   display: grid;
-  gap: 1rem;
-  margin: 0 auto;
-  max-width: 52rem;
-  padding: 1.5rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
+  padding-inline: max(var(--page-padding), calc((100% - 52rem) / 2));
 
   &__header,
   &__item,
@@ -277,6 +279,8 @@ function updateMetadataBackend(metadataBackend: MetadataBackend): void {
   }
 
   &__header {
+    flex-wrap: wrap;
+
     h1,
     p {
       margin: 0;
@@ -301,6 +305,7 @@ function updateMetadataBackend(metadataBackend: MetadataBackend): void {
   }
 
   &__runtime {
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 
@@ -330,6 +335,40 @@ function updateMetadataBackend(metadataBackend: MetadataBackend): void {
     display: grid;
     gap: 0.5rem;
     grid-template-columns: auto 1fr auto 1fr;
+  }
+}
+
+@media (width <= 680px) {
+  .settings-view {
+    &__header {
+      align-items: flex-start;
+    }
+
+    &__item {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    &__metadata-select,
+    &__quick-input,
+    &__shortcut,
+    &__theme-select {
+      flex-basis: auto;
+      width: 100%;
+    }
+  }
+}
+
+@media (width <= 460px) {
+  .settings-view {
+    &__dimensions {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    &__runtime {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
 }
 </style>

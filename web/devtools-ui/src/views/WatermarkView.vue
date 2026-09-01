@@ -374,13 +374,17 @@ function errorMessage(caught: unknown): string {
 <style scoped lang="scss">
 .watermark-view {
   display: grid;
-  gap: 1rem;
-  min-height: 100vh;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     justify-content: space-between;
 
     h1,
@@ -402,6 +406,7 @@ function errorMessage(caught: unknown): string {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(19rem, 23rem) minmax(0, 1fr);
+    min-height: 0;
   }
 
   &__form,
@@ -431,7 +436,7 @@ function errorMessage(caught: unknown): string {
   }
 
   &__preview-card {
-    min-height: 34rem;
+    min-height: clamp(20rem, 62vh, 36rem);
   }
 
   &__empty {
@@ -439,7 +444,7 @@ function errorMessage(caught: unknown): string {
     border: 0;
     cursor: pointer;
     display: grid;
-    min-height: 32rem;
+    min-height: clamp(18rem, 58vh, 34rem);
     place-items: center;
     width: 100%;
   }
@@ -449,7 +454,7 @@ function errorMessage(caught: unknown): string {
       50% / 1rem 1rem;
     border-radius: 0.5rem;
     display: grid;
-    min-height: 32rem;
+    min-height: clamp(18rem, 58vh, 34rem);
     overflow: hidden;
     place-items: center;
 
@@ -462,7 +467,7 @@ function errorMessage(caught: unknown): string {
   }
 }
 
-@media (width <= 860px) {
+@media (width <= 900px) {
   .watermark-view {
     &__header {
       align-items: flex-start;
@@ -471,6 +476,15 @@ function errorMessage(caught: unknown): string {
     }
 
     &__workspace {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+@media (width <= 520px) {
+  .watermark-view {
+    &__actions,
+    &__split-fields {
       grid-template-columns: 1fr;
     }
   }

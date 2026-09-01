@@ -43,7 +43,11 @@ use crate::UserEvent;
 pub fn configure_webview<'a>(
     builder: WebViewBuilder<'a>,
     html: &'static str,
+    development_url: Option<&str>,
 ) -> WebViewBuilder<'a> {
+    if let Some(url) = development_url {
+        return builder.with_url(url);
+    }
     builder
         .with_custom_protocol("devtools".to_owned(), move |_id, _request| {
             wry::http::Response::builder()
@@ -623,19 +627,12 @@ fn placeholder(language: LanguageMode) -> &'static str {
 }
 
 fn create_icon() -> Result<Icon, String> {
-    const SIZE: u32 = 32;
-    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let inside = (4..28).contains(&x) && (4..28).contains(&y);
-            rgba.extend_from_slice(if inside {
-                &[37, 99, 235, 255]
-            } else {
-                &[0, 0, 0, 0]
-            });
-        }
-    }
-    Icon::from_rgba(rgba, SIZE, SIZE).map_err(|error| error.to_string())
+    Icon::from_rgba(
+        crate::app_icon::rgba(),
+        crate::app_icon::ICON_SIZE,
+        crate::app_icon::ICON_SIZE,
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub struct IpcGuard;

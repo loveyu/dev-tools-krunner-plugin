@@ -165,6 +165,14 @@ function handleLanguageChange(): void {
   systemLanguages.value = Array.from(navigator.languages);
 }
 
+function syncViewportMetrics(): void {
+  const viewport = window.visualViewport;
+  const width = viewport?.width ?? window.innerWidth;
+  const height = viewport?.height ?? window.innerHeight;
+  document.documentElement.style.setProperty('--app-viewport-width', `${String(width)}px`);
+  document.documentElement.style.setProperty('--app-viewport-height', `${String(height)}px`);
+}
+
 function t(key: string): string {
   return translate(locale.value, key);
 }
@@ -297,6 +305,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 onMounted(() => {
+  syncViewportMetrics();
+  window.addEventListener('resize', syncViewportMetrics);
+  window.visualViewport?.addEventListener('resize', syncViewportMetrics);
   window.addEventListener('devtools:open-json', handleOpenJson);
   window.addEventListener('devtools:open-convert', handleOpenConvert);
   window.addEventListener('devtools:open-ocr', handleOpenOcr);
@@ -314,6 +325,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncViewportMetrics);
+  window.visualViewport?.removeEventListener('resize', syncViewportMetrics);
   window.removeEventListener('devtools:open-json', handleOpenJson);
   window.removeEventListener('devtools:open-convert', handleOpenConvert);
   window.removeEventListener('devtools:open-ocr', handleOpenOcr);

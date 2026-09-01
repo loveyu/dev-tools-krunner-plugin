@@ -216,6 +216,29 @@ cargo build --release -p devtools-workerd
 .\target\release\devtools-workerd.exe --launcher
 ```
 
+### 前端联调
+
+开发时可以让 Worker 直接加载 Vite 页面并自动打开 Web Inspector，发布模式仍使用编译内置的单文件页面。联调脚本从 7173 起自动探测空闲端口，Vite 可访问后将端口写入系统临时目录的 `devtools-workerd-vite.port`：
+
+```bash
+# 自动启动 Vite 和 Worker
+fnm exec --using 26 pnpm --dir web/devtools-ui dev:worker
+```
+
+也可以手动分开启动；Worker 会读取前端写入的临时端口文件：
+
+```bash
+# 终端 1
+fnm exec --using 26 pnpm --dir web/devtools-ui dev
+
+# 终端 2
+DEVTOOLS_WEBVIEW_DEBUG=1 cargo run -p devtools-workerd -- --launcher
+```
+
+手动指定时，`DEVTOOLS_WEBVIEW_URL` 优先于 `DEVTOOLS_WEBVIEW_PORT` 和临时文件，例如
+`DEVTOOLS_WEBVIEW_DEBUG=1 DEVTOOLS_WEBVIEW_PORT=17173 cargo run -p devtools-workerd -- --launcher`。
+为避免远程页面获得本机 IPC 权限，调试 URL 只允许 `localhost`、IPv4/IPv6 loopback 的 HTTP/HTTPS 地址。
+
 ## 使用
 
 - 打开 KRunner（默认 `Alt+Space`），直接粘贴 JSON 对象/数组即可自动识别；也可以复制 JSON 后输入 `json`。

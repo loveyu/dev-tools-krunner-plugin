@@ -250,10 +250,11 @@ function errorMessage(caught: unknown): string {
 <style scoped lang="scss">
 .image-editor-view {
   display: grid;
-  gap: 0.75rem;
-  height: 100vh;
-  min-height: 36rem;
-  padding: 1rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header,
   &__toolbar {
@@ -263,6 +264,7 @@ function errorMessage(caught: unknown): string {
   }
 
   &__header {
+    flex-wrap: wrap;
     justify-content: space-between;
 
     h1,
@@ -304,14 +306,14 @@ function errorMessage(caught: unknown): string {
   &__editor-shell {
     border: 1px solid var(--border-color);
     border-radius: 0.65rem;
-    min-height: 0;
+    min-height: clamp(24rem, 62vh, 42rem);
     overflow: hidden;
     position: relative;
   }
 
   &__mount {
     height: 100%;
-    min-height: 31rem;
+    min-height: clamp(24rem, 62vh, 42rem);
     width: 100%;
 
     :deep(.tui-image-editor-header) {
@@ -323,7 +325,14 @@ function errorMessage(caught: unknown): string {
     }
 
     :deep(.tui-image-editor-container) {
+      background-color: var(--editor-background);
       font-family: Inter, 'Noto Sans', system-ui, sans-serif;
+    }
+
+    :deep(.tui-image-editor-main),
+    :deep(.tui-image-editor-main-container),
+    :deep(.tui-image-editor-wrap) {
+      background-color: var(--editor-background);
     }
   }
 
@@ -364,6 +373,34 @@ function errorMessage(caught: unknown): string {
 
     &__empty {
       inset: 12% 8%;
+    }
+  }
+}
+
+@media (width <= 560px) {
+  .image-editor-view {
+    &__toolbar {
+      align-items: stretch;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    &__format,
+    &__quality {
+      width: 100%;
+    }
+
+    &__filename {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+@media (height <= 620px) {
+  .image-editor-view {
+    &__editor-shell,
+    &__mount {
+      min-height: 22rem;
     }
   }
 }

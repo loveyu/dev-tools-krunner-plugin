@@ -636,6 +636,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tray-icon",
+ "url",
  "wait-timeout",
  "wayclip-global-hotkey",
  "windows-sys 0.60.2",

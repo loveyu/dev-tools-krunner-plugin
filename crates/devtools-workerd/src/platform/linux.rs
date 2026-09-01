@@ -31,8 +31,13 @@ use crate::UserEvent;
 pub fn configure_webview<'a>(
     builder: WebViewBuilder<'a>,
     html: &'static str,
+    development_url: Option<&str>,
 ) -> WebViewBuilder<'a> {
-    builder.with_html(html)
+    if let Some(url) = development_url {
+        builder.with_url(url)
+    } else {
+        builder.with_html(html)
+    }
 }
 
 pub fn build_webview(

@@ -2,6 +2,7 @@
 
 #![allow(non_snake_case)]
 
+mod app_icon;
 mod application;
 mod color_picker;
 mod global_shortcut;

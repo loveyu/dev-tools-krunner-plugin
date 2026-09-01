@@ -170,14 +170,18 @@ function moveToDecrypt(): void {
 <style scoped lang="scss">
 .crypto-view {
   display: grid;
-  gap: 1rem;
-  margin: 0 auto;
-  max-width: 74rem;
-  padding: 1.5rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
+  padding-inline: max(var(--page-padding), calc((100% - 74rem) / 2));
 
   header {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     justify-content: space-between;
 
     h1,

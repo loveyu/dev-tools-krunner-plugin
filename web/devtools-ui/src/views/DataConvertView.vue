@@ -177,7 +177,7 @@ function toSelectOption(definition: FormatDefinition): {
         </template>
         <NInput
           v-model:value="sourceText"
-          :autosize="{ minRows: 20, maxRows: 32 }"
+          :autosize="{ minRows: 12, maxRows: 28 }"
           class="converter__editor"
           :placeholder="t('ui.enterOrPasteTextToConvert')"
           type="textarea"
@@ -195,7 +195,7 @@ function toSelectOption(definition: FormatDefinition): {
         <NSpin :show="busy">
           <NInput
             v-model:value="outputText"
-            :autosize="{ minRows: 20, maxRows: 32 }"
+            :autosize="{ minRows: 12, maxRows: 28 }"
             class="converter__editor"
             :placeholder="t('ui.conversionResult')"
             readonly
@@ -215,9 +215,11 @@ function toSelectOption(definition: FormatDefinition): {
 <style scoped lang="scss">
 .converter {
   display: grid;
-  gap: 1rem;
-  min-height: 100%;
-  padding: 1.25rem;
+  gap: var(--page-gap);
+  height: var(--app-viewport-height);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--page-padding);
 
   &__header,
   &__title,
@@ -229,6 +231,7 @@ function toSelectOption(definition: FormatDefinition): {
   }
 
   &__header {
+    flex-wrap: wrap;
     justify-content: space-between;
   }
 
@@ -248,14 +251,19 @@ function toSelectOption(definition: FormatDefinition): {
     display: grid;
     gap: 1rem;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
   }
 
   &__panel {
     background: var(--panel-color);
+    min-width: 0;
   }
 
   &__panel-toolbar {
+    flex-wrap: wrap;
+
     :deep(.n-select) {
+      flex: 1 1 11rem;
       min-width: 13rem;
     }
   }
@@ -269,10 +277,9 @@ function toSelectOption(definition: FormatDefinition): {
   }
 }
 
-@media (width <= 860px) {
+@media (width <= 920px) {
   .converter {
-    &__header,
-    &__title {
+    &__header {
       align-items: flex-start;
       flex-direction: column;
     }
@@ -280,7 +287,12 @@ function toSelectOption(definition: FormatDefinition): {
     &__panels {
       grid-template-columns: 1fr;
     }
+  }
+}
 
+@media (width <= 560px) {
+  .converter {
+    &__title,
     &__panel-toolbar {
       align-items: stretch;
       flex-direction: column;
