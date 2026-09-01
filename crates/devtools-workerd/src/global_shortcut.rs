@@ -18,8 +18,14 @@ pub struct ShortcutManager {
 }
 
 impl ShortcutManager {
-    pub fn new(proxy: EventLoopProxy<UserEvent>) -> Result<Self, String> {
+    /// 提前设置 global_hotkey 库依赖的环境变量。
+    /// 必须在 Application 启动任何后台线程之前调用：多线程进程内调用
+    /// `std::env::set_var` 与并发 getenv 构成未定义行为（Rust 2024 起为 unsafe）。
+    pub fn prepare_environment() {
         std::env::set_var("GLOBAL_HOTKEY_APP_ID", "org.loveyu.DevTools");
+    }
+
+    pub fn new(proxy: EventLoopProxy<UserEvent>) -> Result<Self, String> {
         let launcher_id = Arc::new(AtomicU32::new(NO_HOTKEY));
         let quick_input_id = Arc::new(AtomicU32::new(NO_HOTKEY));
         let event_launcher_id = Arc::clone(&launcher_id);

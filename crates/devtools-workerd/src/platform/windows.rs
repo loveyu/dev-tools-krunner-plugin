@@ -83,8 +83,15 @@ pub fn open_external_url(url: &str) -> Result<(), String> {
     Command::new("explorer")
         .arg(url)
         .spawn()
-        .map(|_| ())
+        .map(reap_in_background)
         .map_err(|error| format!("failed to open url with explorer: {error}"))
+}
+
+/// 后台等待子进程退出并回收：worker 是长驻进程，spawn 后不管会随使用累积僵尸。
+fn reap_in_background(mut child: std::process::Child) {
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
 }
 
 pub fn pick_metadata_path() -> Option<PathBuf> {

@@ -46,6 +46,21 @@ impl InlineContextCache {
         self.entries.remove(index).map(|(_, payload)| payload)
     }
 
+    /// 把已消费的正文放回缓存（OpenTool 失败时恢复，供重按 Enter 重试）。
+    fn restore(&mut self, match_id: &str, payload: String) {
+        if self
+            .entries
+            .iter()
+            .any(|(candidate, _)| candidate == match_id)
+        {
+            return;
+        }
+        self.entries.push_back((match_id.to_owned(), payload));
+        if self.entries.len() > MAX_INLINE_CONTEXTS {
+            self.entries.pop_front();
+        }
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
     }
@@ -68,17 +83,30 @@ pub fn open_workbench(
     match_id: &str,
     cache: &mut InlineContextCache,
 ) -> Result<(), Box<dyn Error>> {
+    let from_inline = match_id.starts_with(INLINE_MATCH_ID_PREFIX);
     let payload = if match_id == OPEN_MATCH_ID {
         // 剪贴板入口在 Run 阶段重新读取，避免缓存用户剪贴板内容。
         clipboard::read_text()?
-    } else if match_id.starts_with(INLINE_MATCH_ID_PREFIX) {
+    } else if from_inline {
         cache
             .take(match_id)
             .ok_or_else(|| io::Error::other("JSON input context expired"))?
     } else {
         return Err(io::Error::other("unknown JSON match id").into());
     };
-    let context = Context::from_json_text(payload)?;
+    if let Err(error) = dispatch_open_tool(&payload) {
+        // OpenTool 失败（如 Worker 未部署）时把正文放回缓存：OpenTool 幂等，
+        // 用户重按 Enter 即可重试，而不是让刚输入的 JSON 凭空丢失。
+        if from_inline {
+            cache.restore(match_id, payload);
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn dispatch_open_tool(payload: &str) -> Result<(), Box<dyn Error>> {
+    let context = Context::from_json_text(payload.to_owned())?;
     let connection = Connection::session()?;
     let proxy = Proxy::new(
         &connection,
@@ -208,5 +236,25 @@ mod tests {
         let clipboard = format!("\"{}\"", "x".repeat(MAX_JSON_BYTES));
 
         assert!(match_for_clipboard("json", &clipboard).is_none());
+    }
+
+    #[test]
+    fn restore_makes_failed_open_retryable() {
+        let mut cache = InlineContextCache::default();
+        let match_id = cache.insert("{\"a\":1}".to_owned());
+        let payload = cache.take(&match_id).expect("应可消费");
+
+        // OpenTool 失败回插后，同一 match id 可再次消费，重试不被「已过期」挡住。
+        cache.restore(&match_id, payload);
+        assert_eq!(cache.take(&match_id).as_deref(), Some("{\"a\":1}"));
+        // 重复回插不产生重复条目（后续 take 只有一次命中）。
+        cache.restore(&match_id, "{\"a\":1}".to_owned());
+        cache.restore(&match_id, "{\"a\":1}".to_owned());
+        let duplicates = cache
+            .entries
+            .iter()
+            .filter(|(candidate, _)| candidate == &match_id)
+            .count();
+        assert_eq!(duplicates, 1);
     }
 }

@@ -99,18 +99,50 @@ fn value_for_id(id: &str) -> Option<String> {
     None
 }
 
-/// 把文本复制到 Wayland 剪贴板。`wl-copy` 会作为剪贴板拥有者继续存活，
-/// 因此这里 spawn 后即放手，不去阻塞等待它结束。
+/// 把文本复制到系统剪贴板。
+///
+/// Wayland 用 `wl-copy`：它作为剪贴板拥有者需要继续存活，因此只挂后台线程
+/// 收尸（wait 不终止进程，不影响其存活语义），不阻塞等待退出。
+/// X11 会话没有 wl-copy，回落 `xclip -in`：xclip 自身会守护化，脱离的
+/// 孤儿进程由 init 收养，同样只需回收直接子进程。
 fn copy_to_clipboard(text: &str) {
-    match Command::new("wl-copy").arg(text).spawn() {
-        Ok(_) => {}
-        Err(e) => eprintln!("devtools-runner: wl-copy failed: {e}"),
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        match Command::new("wl-copy").arg(text).spawn() {
+            Ok(child) => reap_in_background(child),
+            Err(e) => eprintln!("devtools-runner: wl-copy failed: {e}"),
+        }
+        return;
     }
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let spawned = Command::new("xclip")
+        .args(["-selection", "clipboard", "-in"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .and_then(|mut child| {
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            Ok(child)
+        });
+    match spawned {
+        Ok(child) => reap_in_background(child),
+        Err(e) => eprintln!("devtools-runner: xclip failed: {e}"),
+    }
+}
+
+/// 后台等待子进程退出并回收，避免长驻进程随使用累积僵尸。
+fn reap_in_background(mut child: std::process::Child) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 }
 
 /// 弹出一个桌面通知。
 fn notify(summary: &str, body: &str) {
-    if let Err(e) = Command::new("notify-send")
+    match Command::new("notify-send")
         .args([
             "--app-name",
             "DevTools",
@@ -121,7 +153,8 @@ fn notify(summary: &str, body: &str) {
         ])
         .spawn()
     {
-        eprintln!("devtools-runner: notify-send failed: {e}");
+        Ok(child) => reap_in_background(child),
+        Err(e) => eprintln!("devtools-runner: notify-send failed: {e}"),
     }
 }
 

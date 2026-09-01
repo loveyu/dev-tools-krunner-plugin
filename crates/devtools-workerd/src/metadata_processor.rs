@@ -323,6 +323,13 @@ fn collect_output(
         None => {
             let _ = child.kill();
             let _ = child.wait();
+            // kill 关闭管道后 reader 线程随之结束；若输出已读满上限，说明真实
+            // 原因是输出超限（子进程写管道阻塞，并非真的超时），优先报超限。
+            for reader in [stdout_reader, stderr_reader] {
+                if let Ok(Err(error)) = reader.join() {
+                    return Err(error);
+                }
+            }
             return Err("ExifTool timed out after 30 seconds".to_owned());
         }
     };

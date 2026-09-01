@@ -47,6 +47,8 @@ pub struct Application;
 
 impl Application {
     pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+        // global_hotkey 依赖的环境变量必须先于一切线程启动设置（见 prepare_environment 注释）。
+        ShortcutManager::prepare_environment();
         let arguments = std::env::args().skip(1).collect::<Vec<_>>();
         let open_settings = arguments.iter().any(|argument| argument == "--settings");
         let open_launcher = arguments.iter().any(|argument| argument == "--launcher");

@@ -292,25 +292,36 @@ fn run_php(
         None => {
             let _ = child.kill();
             let _ = child.wait();
+            // kill 关闭管道后 reader 线程随之结束；若输出已读满上限，说明真实
+            // 原因是输出超限（子进程写管道阻塞，并非真的超时），优先报超限。
+            for reader in [stdout_reader, stderr_reader] {
+                if let Ok(Err(error)) = reader.join() {
+                    return Err(error);
+                }
+            }
             return Err("PHP conversion timed out after 5 seconds".to_owned());
         }
     };
 
-    writer
-        .join()
-        .map_err(|_| "PHP stdin writer panicked".to_owned())?
-        .map_err(|error| format!("failed to write PHP stdin: {error}"))?;
     let stdout = stdout_reader
         .join()
         .map_err(|_| "PHP stdout reader panicked".to_owned())??;
     let stderr = stderr_reader
         .join()
         .map_err(|_| "PHP stderr reader panicked".to_owned())??;
-
+    // 先报告子进程自身的失败原因：PHP 提前退出时 stdin 写入端的 Broken pipe
+    // 是症状不是病因，真实原因在 stderr 里。
     if !status.success() {
-        let detail = String::from_utf8_lossy(&stderr);
-        return Err(format!("PHP conversion failed: {}", detail.trim()));
+        return Err(format!(
+            "PHP CLI failed: {}",
+            String::from_utf8_lossy(&stderr).trim()
+        ));
     }
+    writer
+        .join()
+        .map_err(|_| "PHP stdin writer panicked".to_owned())?
+        .map_err(|error| format!("failed to write PHP stdin: {error}"))?;
+
     String::from_utf8(stdout).map_err(|error| format!("PHP returned invalid UTF-8: {error}"))
 }
 

@@ -463,16 +463,18 @@ fn run_with_stdin(program: &str, arguments: &[&str], input: &[u8]) -> Result<Vec
     let input = input.to_vec();
     let writer = thread::spawn(move || stdin.write_all(&input));
     let (status, stdout, stderr) = collect_child_output(&mut child, PROCESS_TIMEOUT)?;
-    writer
-        .join()
-        .map_err(|_| "media process stdin writer panicked".to_owned())?
-        .map_err(|error| format!("failed to write media process stdin: {error}"))?;
+    // 先报告子进程自身的失败原因：子进程因坏图/坏参数提前退出时，stdin 写入端
+    // 必然收到 Broken pipe——那是症状不是病因，真实原因在 stderr 里。
     if !status.success() {
         return Err(format!(
             "{program} failed: {}",
             String::from_utf8_lossy(&stderr).trim()
         ));
     }
+    writer
+        .join()
+        .map_err(|_| "media process stdin writer panicked".to_owned())?
+        .map_err(|error| format!("failed to write media process stdin: {error}"))?;
     Ok(stdout)
 }
 
@@ -492,6 +494,13 @@ fn collect_child_output(
         None => {
             let _ = child.kill();
             let _ = child.wait();
+            // kill 关闭管道后 reader 线程随之结束；若输出已读满上限，说明真实
+            // 原因是输出超限（子进程写管道阻塞，并非真的超时），优先报超限。
+            for reader in [stdout_reader, stderr_reader] {
+                if let Ok(Err(error)) = reader.join() {
+                    return Err(error);
+                }
+            }
             return Err("media processing timed out after 30 seconds".to_owned());
         }
     };
