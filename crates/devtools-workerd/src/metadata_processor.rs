@@ -358,9 +358,7 @@ fn normalize_external_json(output: &[u8]) -> Result<Vec<MetadataField>, String> 
     let mut fields = document
         .into_iter()
         .map(|(key, value)| {
-            let (group, name) = key
-                .split_once(':')
-                .map_or(("ExifTool", key.as_str()), |parts| parts);
+            let (group, name) = key.split_once(':').unwrap_or(("ExifTool", key.as_str()));
             MetadataField {
                 group: group.to_owned(),
                 name: name.to_owned(),
