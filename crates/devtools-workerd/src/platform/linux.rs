@@ -604,10 +604,13 @@ impl QuickInputWindow {
         window.set_skip_pager_hint(true);
         window.set_skip_taskbar_hint(true);
         window.set_type_hint(gdk::WindowTypeHint::Utility);
-        window.set_resizable(false);
+        window.set_default_size(560, 56);
+        window.set_resizable(true);
         window.set_position(gtk::WindowPosition::Mouse);
 
         let entry = gtk::Entry::new();
+        entry.set_hexpand(true);
+        entry.set_vexpand(true);
         entry.set_margin_top(8);
         entry.set_margin_bottom(8);
         entry.set_margin_start(12);
@@ -677,6 +680,8 @@ impl QuickInputWindow {
     pub fn show(&self, settings: &Settings) {
         *self.target_window.borrow_mut() = capture_x11_target();
         let (width, height, position) = bounded_geometry(settings);
+        self.window.set_default_size(width, height);
+        self.window.set_size_request(width, height);
         self.window.resize(width, height);
         if let Some((x, y)) = position {
             self.window.move_(x, y);
@@ -694,24 +699,23 @@ impl QuickInputWindow {
 }
 
 pub struct QuickInputInjector {
-    portal_sender: Option<mpsc::Sender<()>>,
+    portal_sender: Option<mpsc::Sender<String>>,
 }
 
 impl QuickInputInjector {
     pub fn new() -> Self {
-        let portal_sender = is_wayland().then(spawn_portal_paster);
+        let portal_sender = is_wayland().then(spawn_portal_typer);
         Self { portal_sender }
     }
 
     pub fn inject(&self, text: &str, target_window: Option<&str>) -> Result<(), String> {
-        copy_text(text);
         if let Some(target) = target_window {
             return xdotool_type(target, text);
         }
         self.portal_sender
             .as_ref()
             .ok_or_else(|| "no cross-application input backend is available".to_owned())?
-            .send(())
+            .send(text.to_owned())
             .map_err(|error| error.to_string())
     }
 }
@@ -788,8 +792,8 @@ fn env_var_present(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
 }
 
-fn spawn_portal_paster() -> mpsc::Sender<()> {
-    let (sender, receiver) = mpsc::channel();
+fn spawn_portal_typer() -> mpsc::Sender<String> {
+    let (sender, receiver) = mpsc::channel::<String>();
     thread::spawn(move || {
         let runtime = match tokio::runtime::Runtime::new() {
             Ok(runtime) => runtime,
@@ -799,13 +803,14 @@ fn spawn_portal_paster() -> mpsc::Sender<()> {
             }
         };
         let mut session = None;
-        while receiver.recv().is_ok() {
-            thread::sleep(Duration::from_millis(120));
+        while let Ok(text) = receiver.recv() {
             let result = runtime.block_on(async {
                 if session.is_none() {
                     session = Some(create_portal_session().await?);
                 }
-                portal_paste(session.as_ref().expect("session was initialized")).await
+                // Portal 首次授权也可能切走焦点；授权完成后再等待原窗口重新获得焦点。
+                tokio::time::sleep(Duration::from_millis(120)).await;
+                portal_type_text(session.as_ref().expect("session was initialized"), &text).await
             });
             if let Err(error) = result {
                 session = None;
@@ -849,22 +854,28 @@ async fn create_portal_session() -> Result<PortalSession, String> {
     Ok(PortalSession { proxy, session })
 }
 
-async fn portal_paste(session: &PortalSession) -> Result<(), String> {
-    const CONTROL_L: i32 = 0xffe3;
-    const LOWER_V: i32 = 0x0076;
-    for (keysym, state) in [
-        (CONTROL_L, KeyState::Pressed),
-        (LOWER_V, KeyState::Pressed),
-        (LOWER_V, KeyState::Released),
-        (CONTROL_L, KeyState::Released),
-    ] {
-        session
-            .proxy
-            .notify_keyboard_keysym(&session.session, keysym, state, Default::default())
-            .await
-            .map_err(|error| error.to_string())?;
+async fn portal_type_text(session: &PortalSession, text: &str) -> Result<(), String> {
+    for character in text.chars() {
+        let keysym = character_to_keysym(character);
+        for state in [KeyState::Pressed, KeyState::Released] {
+            session
+                .proxy
+                .notify_keyboard_keysym(&session.session, keysym, state, Default::default())
+                .await
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(())
+}
+
+fn character_to_keysym(character: char) -> i32 {
+    match character {
+        '\n' | '\r' => 0xff0d,
+        '\t' => 0xff09,
+        '\u{8}' => 0xff08,
+        value if value as u32 <= 0xff => value as i32,
+        value => (0x0100_0000 | value as u32) as i32,
+    }
 }
 
 /// KDE StatusNotifierItem 托盘实现，菜单动作只投递给应用主线程。
@@ -1163,6 +1174,16 @@ mod tests {
             portal_shortcut_event_id(Some("/session/current"), "/session/current", "invalid"),
             None
         );
+    }
+
+    #[test]
+    fn maps_text_characters_to_portal_keysyms() {
+        assert_eq!(character_to_keysym('a'), 0x0061);
+        assert_eq!(character_to_keysym('A'), 0x0041);
+        assert_eq!(character_to_keysym('é'), 0x00e9);
+        assert_eq!(character_to_keysym('\n'), 0xff0d);
+        assert_eq!(character_to_keysym('\t'), 0xff09);
+        assert_eq!(character_to_keysym('中'), 0x0100_0000 | '中' as i32);
     }
 
     #[test]

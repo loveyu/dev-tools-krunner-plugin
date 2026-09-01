@@ -30,7 +30,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor, GetCursorPos,
     GetForegroundWindow, GetGUIThreadInfo, GetParent, GetWindowLongPtrW, GetWindowTextLengthW,
-    GetWindowTextW, IsWindow, MoveWindow, RegisterClassW, SendMessageW, SetForegroundWindow,
+    GetWindowTextW, MoveWindow, RegisterClassW, SendMessageW, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, CS_HREDRAW, CS_VREDRAW,
     ES_AUTOHSCROLL, GA_ROOT, GUITHREADINFO, GWLP_USERDATA, GWLP_WNDPROC, HWND_TOPMOST,
     SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WM_KEYDOWN, WM_NCDESTROY, WM_SIZE, WNDCLASSW, WNDPROC,
@@ -359,12 +359,7 @@ impl QuickInputInjector {
             SetForegroundWindow(if root.is_null() { target } else { root });
         }
         thread::sleep(Duration::from_millis(60));
-        match send_unicode(text) {
-            Ok(()) => Ok(()),
-            Err(primary_error) => replace_selection(target, text).map_err(|fallback_error| {
-                format!("{primary_error}; direct edit fallback failed: {fallback_error}")
-            }),
-        }
+        send_unicode(text)
     }
 }
 
@@ -531,18 +526,6 @@ fn send_unicode(text: &str) -> Result<(), String> {
                 inputs.len()
             )
         })
-}
-
-fn replace_selection(target: HWND, text: &str) -> Result<(), String> {
-    const EM_REPLACESEL: u32 = 0x00c2;
-    if unsafe { IsWindow(target) } == 0 {
-        return Err("original focused control no longer exists".to_owned());
-    }
-    let text = wide(text);
-    unsafe {
-        SendMessageW(target, EM_REPLACESEL, 1, text.as_ptr() as LPARAM);
-    }
-    Ok(())
 }
 
 fn wide(value: &str) -> Vec<u16> {

@@ -106,7 +106,7 @@ Linux Wayland/X11 使用 XDG Desktop Portal `PickColor`，由 KDE 门户负责�
 - 工具启动器快捷键：唤出 WebView 工具搜索窗口，默认值为 `Ctrl+Alt+Space`。
 - 原生快速输入快捷键：唤出不使用 WebView 的轻量输入框，默认值为 `Ctrl+Alt+KeyI`。输入框自动聚焦并按指针所在显示器工作区裁剪位置和尺寸；`Enter` 将内容回填原应用，`↑` / `↓` 浏览本次和历史输入。
 
-原生快速输入历史按 JSONL 追加保存：Linux 为 `$XDG_DATA_HOME/devtools/quick-input-history.jsonl`（默认 `~/.local/share/devtools/quick-input-history.jsonl`），Windows 为 `%LOCALAPPDATA%\devtools\quick-input-history.jsonl`。X11 使用 `xdotool` 回到原窗口并输入；KDE Wayland 按系统安全模型通过 XDG RemoteDesktop 门户申请键盘注入权限，首次使用会出现授权界面；Windows 使用 Win32 原生窗口与 `SendInput`。
+原生快速输入历史按 JSONL 追加保存：Linux 为 `$XDG_DATA_HOME/devtools/quick-input-history.jsonl`（默认 `~/.local/share/devtools/quick-input-history.jsonl`），Windows 为 `%LOCALAPPDATA%\devtools\quick-input-history.jsonl`。按下 `Enter` 后输入框先隐藏并归还焦点，再以键盘事件逐字符输入，不改写剪贴板：X11 使用 `xdotool` 回到原窗口；KDE Wayland 按系统安全模型通过 XDG RemoteDesktop 门户申请键盘注入权限，首次使用会出现授权界面；Windows 使用 Win32 `SendInput`。
 
 Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“设置 / 重启 / 退出”，左键打开独立启动器。设置页同样由 Vue 3 + Naive UI WebView 渲染，可控制：
 
