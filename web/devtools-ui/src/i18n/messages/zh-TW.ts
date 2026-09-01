@@ -322,6 +322,7 @@ export const traditionalChinese: Record<string, string> = {
   'ipc.errors.mediaTimeout': '圖片處理逾時',
   'ipc.errors.mediaUnavailable': '目前環境未提供圖片處理 IPC',
   'ipc.errors.mediaEmptyResult': '圖片處理未回傳結果',
+  'ipc.errors.metadataCancelled': '已取消選擇檔案',
   'ipc.errors.metadataTimeout': '中繼資料讀取逾時',
   'ipc.errors.metadataUnavailable': '目前環境未提供中繼資料 IPC',
   'ipc.errors.metadataEmptyResult': '中繼資料讀取未回傳結果',

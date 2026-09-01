@@ -101,7 +101,11 @@ function isBase64Gzip(text: string): boolean {
 }
 
 function isCookie(text: string): boolean {
-  return text.includes(';') && text.split(';').every((pair) => /^\s*[^=;\s]+\s*=/.test(pair));
+  // 含 & 的多对输入属于 query string，含换行的属于 ini/toml 等多行格式；
+  // 这里只认单行的 `k=v` 或 `k=v; k2=v2` 形式（单对 cookie 也能识别）。
+  // value 必须非空，避免把 base64 尾随的 `=` 误认成 key=value。
+  if (text.includes('&') || text.includes('\n')) return false;
+  return text.split(';').every((pair) => /^\s*[^=;\s&]+\s*=\s*\S/.test(pair));
 }
 
 function isQuery(text: string): boolean {

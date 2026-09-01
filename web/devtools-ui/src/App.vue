@@ -326,8 +326,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-// WebView 内嵌 HTML 无法打开新窗口，外链统一经 IPC 交给系统默认浏览器。
-// 纯浏览器调试（无 window.ipc）时保持默认行为。
+// WebView 内嵌 HTML 无法打开新窗口，外链统一经 IPC 交给系统：http(s) 走默认浏览器，
+// mailto 交给系统默认邮件客户端。纯浏览器调试（无 window.ipc）时保持默认行为。
 function handleExternalLinkClick(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) {
     return;
@@ -341,7 +341,7 @@ function handleExternalLinkClick(event: MouseEvent): void {
     return;
   }
   const href = link.getAttribute('href');
-  if (href === null || !/^https?:\/\//i.test(href) || window.ipc === undefined) {
+  if (href === null || !/^(https?|mailto):/i.test(href) || window.ipc === undefined) {
     return;
   }
   event.preventDefault();

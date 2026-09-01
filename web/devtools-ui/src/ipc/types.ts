@@ -94,6 +94,8 @@ export type MetadataProcessResultDetail = {
   readonly requestId: string;
   readonly result: MetadataDocument | null;
   readonly error: string | null;
+  /** 用户主动取消（如关闭文件选择框）；调用方应静默处理而不是报错。 */
+  readonly cancelled: boolean;
 };
 
 export type ColorPickResultDetail = {

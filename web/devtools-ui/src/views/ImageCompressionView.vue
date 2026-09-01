@@ -24,6 +24,7 @@ import {
   formatFileSize,
   initialTargetDimensions,
   outputFilename,
+  sizeDelta,
   validateCompressionFileMetadata,
 } from '../tools/image-compression/model';
 import type {
@@ -73,12 +74,10 @@ const outputSizeLabel = computed(() =>
 );
 const deltaLabel = computed(() => {
   if (selectedFile.value === null || outputResult.value === null) return '—';
-  const originalBytes = selectedFile.value.size;
-  if (originalBytes <= 0) return '—';
-  const outputBytes = outputResult.value.blob.size;
-  const percentage = Math.abs((1 - outputBytes / originalBytes) * 100).toFixed(1);
-  return t(outputBytes <= originalBytes ? 'ui.percentageSmaller' : 'ui.percentageLarger', {
-    percentage,
+  const delta = sizeDelta(selectedFile.value.size, outputResult.value.blob.size);
+  if (delta === null) return '—';
+  return t(delta.smaller ? 'ui.percentageSmaller' : 'ui.percentageLarger', {
+    percentage: delta.percentage,
   });
 });
 const outputDimensionsLabel = computed(() =>

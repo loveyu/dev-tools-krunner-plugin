@@ -4,7 +4,11 @@ import { NAlert, NButton, NCard, NEmpty, NInput, NSpace, NSpin, NTag, useMessage
 
 import { useI18n } from '../i18n/runtime';
 import { postRequest } from '../ipc/bridge';
-import { pickAndReadMetadata, readImageMetadata } from '../ipc/native-metadata';
+import {
+  MetadataCancelledError,
+  pickAndReadMetadata,
+  readImageMetadata,
+} from '../ipc/native-metadata';
 import { firstImageFile, prepareImage } from '../tools/media/image';
 import type { MetadataCapabilities, MetadataDocument } from '../tools/metadata/types';
 
@@ -47,9 +51,9 @@ async function chooseFile(): Promise<void> {
   try {
     document.value = await pickAndReadMetadata();
   } catch (caught) {
-    const text = caught instanceof Error ? caught.message : String(caught);
-    // 取消选择不是错误：Rust 侧以固定文案回传，按原文判断后再翻译展示。
-    if (text !== 'file selection was cancelled') error.value = t(text);
+    // 取消选择文件不是错误，静默返回。
+    if (caught instanceof MetadataCancelledError) return;
+    error.value = t(caught instanceof Error ? caught.message : String(caught));
   } finally {
     loading.value = false;
   }
@@ -78,6 +82,8 @@ async function readPastedImage(image: File): Promise<void> {
 function copy(value: string): void {
   if (postRequest({ type: 'clipboardWrite', text: value })) {
     message.success(t('metadata.messages.copied'));
+  } else {
+    message.error(t('ui.clipboardIpcIsUnavailable'));
   }
 }
 

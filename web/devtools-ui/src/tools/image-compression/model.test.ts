@@ -8,7 +8,7 @@ import {
   formatFileSize,
   initialTargetDimensions,
   outputFilename,
-  sizeDeltaLabel,
+  sizeDelta,
   validateCompressionFileMetadata,
 } from './model';
 
@@ -86,8 +86,8 @@ describe('compression presentation helpers', () => {
   });
 
   it('describes smaller, larger and unavailable size deltas', () => {
-    expect(sizeDeltaLabel(1000, 750)).toBe('减少 25.0%');
-    expect(sizeDeltaLabel(1000, 1100)).toBe('增加 10.0%');
-    expect(sizeDeltaLabel(0, 0)).toBe('—');
+    expect(sizeDelta(1000, 750)).toEqual({ percentage: '25.0', smaller: true });
+    expect(sizeDelta(1000, 1100)).toEqual({ percentage: '10.0', smaller: false });
+    expect(sizeDelta(0, 0)).toBeNull();
   });
 });

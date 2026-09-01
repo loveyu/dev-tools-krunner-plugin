@@ -129,6 +129,8 @@ describe('detectFormat', () => {
     ['https://example.com/a?x=1', 'uri'],
     ['a:1:{s:1:"a";i:1;}', 'php-serialize'],
     ['name=devtools&desktop=kde', 'query-rfc3986'],
+    ['a=1', 'cookie'],
+    ['token=abc123', 'cookie'],
     ['name,desktop\ndevtools,kde', 'csv'],
     ['name\tdesktop\ndevtools\tkde', 'tsv'],
     ['name:devtools\ndesktop:kde', 'postman-bulk'],

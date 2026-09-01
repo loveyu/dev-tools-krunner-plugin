@@ -322,6 +322,7 @@ export const simplifiedChinese: Record<string, string> = {
   'ipc.errors.mediaTimeout': '图片处理超时',
   'ipc.errors.mediaUnavailable': '当前环境未提供图片处理 IPC',
   'ipc.errors.mediaEmptyResult': '图片处理未返回结果',
+  'ipc.errors.metadataCancelled': '已取消选择文件',
   'ipc.errors.metadataTimeout': '元数据读取超时',
   'ipc.errors.metadataUnavailable': '当前环境未提供元数据 IPC',
   'ipc.errors.metadataEmptyResult': '元数据读取未返回结果',

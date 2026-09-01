@@ -69,10 +69,13 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
 }
 
-export function sizeDeltaLabel(originalBytes: number, outputBytes: number): string {
-  if (originalBytes <= 0) return '—';
+/** 压缩前后体积变化：百分比文本与方向，具体文案由调用方做 i18n 渲染。 */
+export type SizeDelta = { readonly percentage: string; readonly smaller: boolean };
+
+export function sizeDelta(originalBytes: number, outputBytes: number): SizeDelta | null {
+  if (originalBytes <= 0) return null;
   const percentage = Math.abs((1 - outputBytes / originalBytes) * 100).toFixed(1);
-  return outputBytes <= originalBytes ? `减少 ${percentage}%` : `增加 ${percentage}%`;
+  return { percentage, smaller: outputBytes <= originalBytes };
 }
 
 function extensionForType(mimeType: OutputImageType): string {

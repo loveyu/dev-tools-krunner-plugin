@@ -348,6 +348,7 @@ export const english: Record<string, string> = {
   'ipc.errors.mediaTimeout': 'Image processing timed out',
   'ipc.errors.mediaUnavailable': 'Image processing IPC is unavailable',
   'ipc.errors.mediaEmptyResult': 'Image processing returned no result',
+  'ipc.errors.metadataCancelled': 'File selection was cancelled',
   'ipc.errors.metadataTimeout': 'Metadata reading timed out',
   'ipc.errors.metadataUnavailable': 'Metadata IPC is unavailable',
   'ipc.errors.metadataEmptyResult': 'Metadata reading returned no result',

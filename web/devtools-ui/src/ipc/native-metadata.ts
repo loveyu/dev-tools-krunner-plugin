@@ -9,6 +9,13 @@ type PendingRequest = {
   readonly timeout: number;
 };
 
+/** 用户主动取消（关闭文件选择框）；调用方应静默处理而不是报错。 */
+export class MetadataCancelledError extends Error {
+  constructor() {
+    super('ipc.errors.metadataCancelled');
+  }
+}
+
 const pending = new Map<string, PendingRequest>();
 let nextRequestId = 0;
 
@@ -59,7 +66,8 @@ function handleMetadataResult(event: Event): void {
   if (request === undefined) return;
   window.clearTimeout(request.timeout);
   pending.delete(event.detail.requestId);
-  if (event.detail.error !== null) request.reject(new Error(event.detail.error));
+  if (event.detail.cancelled) request.reject(new MetadataCancelledError());
+  else if (event.detail.error !== null) request.reject(new Error(event.detail.error));
   else if (event.detail.result !== null) request.resolve(event.detail.result);
   else request.reject(new Error('ipc.errors.metadataEmptyResult'));
 }
@@ -70,6 +78,7 @@ function isMetadataResult(detail: unknown): detail is MetadataProcessResultDetai
   return (
     typeof candidate['requestId'] === 'string' &&
     (candidate['result'] === null || typeof candidate['result'] === 'object') &&
-    (candidate['error'] === null || typeof candidate['error'] === 'string')
+    (candidate['error'] === null || typeof candidate['error'] === 'string') &&
+    typeof candidate['cancelled'] === 'boolean'
   );
 }
