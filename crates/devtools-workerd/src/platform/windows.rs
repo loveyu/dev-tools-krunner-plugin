@@ -596,24 +596,18 @@ fn resolve_language(language: LanguageMode) -> LanguageMode {
     if language != LanguageMode::System {
         return language;
     }
+    system_language()
+}
+
+/// 返回当前 Windows 用户对应的受支持界面语言。
+pub fn system_language() -> LanguageMode {
     let mut buffer = [0u16; 85];
     let length = unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), buffer.len() as i32) };
     if length <= 1 {
         return LanguageMode::English;
     }
-    let locale = String::from_utf16_lossy(&buffer[..length as usize - 1]).to_ascii_lowercase();
-    if locale.starts_with("zh") {
-        if ["tw", "hk", "mo", "hant"]
-            .into_iter()
-            .any(|marker| locale.contains(marker))
-        {
-            LanguageMode::TraditionalChinese
-        } else {
-            LanguageMode::SimplifiedChinese
-        }
-    } else {
-        LanguageMode::English
-    }
+    let locale = String::from_utf16_lossy(&buffer[..length as usize - 1]);
+    LanguageMode::from_locale(&locale)
 }
 
 fn placeholder(language: LanguageMode) -> &'static str {

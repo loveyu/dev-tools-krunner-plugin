@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MESSAGES } from './messages';
-import { detectLocale, resolveLocale, translate } from './core';
+import { detectLocale, initialSystemLocale, resolveLocale, translate } from './core';
 
 describe('i18n runtime', () => {
   it('detects simplified and traditional Chinese variants', () => {
@@ -16,11 +16,16 @@ describe('i18n runtime', () => {
     expect(detectLocale(['de-DE'])).toBe('en-US');
   });
 
+  it('prefers the platform locale over an incorrect WebView locale', () => {
+    expect(initialSystemLocale('zh-CN', ['C'])).toBe('zh-CN');
+    expect(initialSystemLocale(undefined, ['zh-TW'])).toBe('zh-TW');
+  });
+
   it('resolves automatic and explicitly selected modes', () => {
-    expect(resolveLocale('system', ['zh-TW'])).toBe('zh-TW');
-    expect(resolveLocale('zh-CN', ['en-US'])).toBe('zh-CN');
-    expect(resolveLocale('zh-TW', ['en-US'])).toBe('zh-TW');
-    expect(resolveLocale('en-US', ['zh-CN'])).toBe('en-US');
+    expect(resolveLocale('system', 'zh-TW')).toBe('zh-TW');
+    expect(resolveLocale('zh-CN', 'en-US')).toBe('zh-CN');
+    expect(resolveLocale('zh-TW', 'en-US')).toBe('zh-TW');
+    expect(resolveLocale('en-US', 'zh-CN')).toBe('en-US');
   });
 
   it('translates, interpolates and falls back to the source key', () => {

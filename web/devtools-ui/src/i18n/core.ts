@@ -16,8 +16,15 @@ export function detectLocale(languages: readonly string[]): SupportedLocale {
   return 'en-US';
 }
 
-export function resolveLocale(mode: LanguageMode, languages: readonly string[]): SupportedLocale {
-  return mode === 'system' ? detectLocale(languages) : mode;
+export function initialSystemLocale(
+  platformLocale: SupportedLocale | undefined,
+  browserLanguages: readonly string[],
+): SupportedLocale {
+  return platformLocale ?? detectLocale(browserLanguages);
+}
+
+export function resolveLocale(mode: LanguageMode, systemLocale: SupportedLocale): SupportedLocale {
+  return mode === 'system' ? systemLocale : mode;
 }
 
 export function translate(

@@ -4,7 +4,7 @@ import { inject, provide } from 'vue';
 import { translate } from './core';
 import type { SupportedLocale, Translator } from './core';
 
-export { detectLocale, resolveLocale, translate } from './core';
+export { detectLocale, initialSystemLocale, resolveLocale, translate } from './core';
 export type { SupportedLocale, TranslationParameters, Translator } from './core';
 
 type I18nContext = {

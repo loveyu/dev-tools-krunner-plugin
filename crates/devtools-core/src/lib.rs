@@ -186,7 +186,7 @@ pub enum ThemeMode {
     Dark,
 }
 
-/// WebView 显示语言；自动模式由前端根据浏览器/桌面语言解析。
+/// 界面显示语言；自动模式由 Worker Platform 根据系统语言解析。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LanguageMode {
     #[default]
@@ -198,6 +198,25 @@ pub enum LanguageMode {
     TraditionalChinese,
     #[serde(rename = "en-US")]
     English,
+}
+
+impl LanguageMode {
+    /// 将平台 locale 归一化为当前支持的界面语言。
+    pub fn from_locale(locale: &str) -> Self {
+        let locale = locale.trim().to_ascii_lowercase();
+        if locale.starts_with("zh") {
+            if ["tw", "hk", "mo", "hant"]
+                .into_iter()
+                .any(|marker| locale.contains(marker))
+            {
+                Self::TraditionalChinese
+            } else {
+                Self::SimplifiedChinese
+            }
+        } else {
+            Self::English
+        }
+    }
 }
 
 impl Default for Settings {
@@ -299,5 +318,22 @@ mod tests {
         assert_eq!(settings.quick_input_width, 560);
         assert_eq!(settings.quick_input_height, 56);
         assert_eq!(settings.metadata_backend, MetadataBackend::Builtin);
+    }
+
+    #[test]
+    fn normalizes_supported_platform_locales() {
+        assert_eq!(
+            LanguageMode::from_locale("zh_CN.UTF-8"),
+            LanguageMode::SimplifiedChinese
+        );
+        assert_eq!(
+            LanguageMode::from_locale("zh-Hant-HK"),
+            LanguageMode::TraditionalChinese
+        );
+        assert_eq!(
+            LanguageMode::from_locale("en_GB.UTF-8"),
+            LanguageMode::English
+        );
+        assert_eq!(LanguageMode::from_locale("C.UTF-8"), LanguageMode::English);
     }
 }

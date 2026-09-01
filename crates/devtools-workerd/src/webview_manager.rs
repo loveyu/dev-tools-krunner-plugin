@@ -26,6 +26,7 @@ const DEVELOPMENT_PORT_FILE: &str = "devtools-workerd-vite.port";
 struct InitialState {
     version: &'static str,
     settings: Settings,
+    system_locale: devtools_core::LanguageMode,
     converter_capabilities: ConverterCapabilities,
     media_capabilities: MediaCapabilities,
     metadata_capabilities: MetadataCapabilities,
@@ -145,6 +146,7 @@ impl WebViewManager {
         let initial_state = InitialState {
             version: env!("CARGO_PKG_VERSION"),
             settings,
+            system_locale: platform::system_language(),
             converter_capabilities,
             media_capabilities,
             metadata_capabilities,

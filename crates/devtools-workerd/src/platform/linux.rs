@@ -553,25 +553,21 @@ fn resolve_language(language: LanguageMode) -> LanguageMode {
     if language != LanguageMode::System {
         return language;
     }
-    let locale = ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
-        .into_iter()
-        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()));
-    language_for_locale(locale.as_deref())
+    system_language()
 }
 
-fn language_for_locale(locale: Option<&str>) -> LanguageMode {
-    let locale = locale.unwrap_or_default().to_ascii_lowercase();
-    if locale.starts_with("zh") {
-        return if ["tw", "hk", "mo", "hant"]
-            .into_iter()
-            .any(|marker| locale.contains(marker))
-        {
-            LanguageMode::TraditionalChinese
-        } else {
-            LanguageMode::SimplifiedChinese
-        };
-    }
-    LanguageMode::English
+/// 返回当前 Linux 桌面会话对应的受支持界面语言。
+pub fn system_language() -> LanguageMode {
+    language_from_environment(|name| std::env::var(name).ok())
+}
+
+fn language_from_environment(mut value_of: impl FnMut(&str) -> Option<String>) -> LanguageMode {
+    ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
+        .into_iter()
+        .find_map(|name| value_of(name).filter(|value| !value.is_empty()))
+        .map_or(LanguageMode::English, |locale| {
+            LanguageMode::from_locale(&locale)
+        })
 }
 
 fn placeholder(language: LanguageMode) -> &'static str {
@@ -692,18 +688,33 @@ mod tests {
     #[test]
     fn detects_supported_system_locales() {
         assert_eq!(
-            language_for_locale(Some("zh_CN.UTF-8")),
+            LanguageMode::from_locale("zh_CN.UTF-8"),
             LanguageMode::SimplifiedChinese
         );
         assert_eq!(
-            language_for_locale(Some("zh_Hant_HK.UTF-8")),
+            LanguageMode::from_locale("zh_Hant_HK.UTF-8"),
             LanguageMode::TraditionalChinese
         );
         assert_eq!(
-            language_for_locale(Some("en_GB.UTF-8")),
+            LanguageMode::from_locale("en_GB.UTF-8"),
             LanguageMode::English
         );
-        assert_eq!(language_for_locale(None), LanguageMode::English);
+    }
+
+    #[test]
+    fn language_environment_prefers_language_over_c_locale() {
+        let language = language_from_environment(|name| match name {
+            "LANGUAGE" => Some("zh_CN:zh".to_owned()),
+            "LC_ALL" => Some("C.UTF-8".to_owned()),
+            _ => None,
+        });
+
+        assert_eq!(language, LanguageMode::SimplifiedChinese);
+    }
+
+    #[test]
+    fn language_environment_falls_back_to_english() {
+        assert_eq!(language_from_environment(|_| None), LanguageMode::English);
     }
 
     #[test]

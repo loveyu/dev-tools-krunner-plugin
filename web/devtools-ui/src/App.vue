@@ -10,7 +10,13 @@ import {
   zhTW,
 } from 'naive-ui';
 
-import { provideI18n, resolveLocale, translate } from './i18n/runtime';
+import {
+  detectLocale,
+  initialSystemLocale,
+  provideI18n,
+  resolveLocale,
+  translate,
+} from './i18n/runtime';
 import { postRequest } from './ipc/bridge';
 import type { OpenConvertDetail, OpenJsonDetail, Settings, SettingsDetail } from './ipc/types';
 import type { FormatId } from './tools/converter/types';
@@ -45,7 +51,8 @@ type View =
   | 'settings'
   | 'watermark';
 
-const initialState = window.__DEVTOOLS_INITIAL_STATE__ ?? {
+const nativeInitialState = window.__DEVTOOLS_INITIAL_STATE__;
+const initialState = nativeInitialState ?? {
   version: 'development',
   settings: {
     showTray: true,
@@ -60,6 +67,7 @@ const initialState = window.__DEVTOOLS_INITIAL_STATE__ ?? {
     language: 'system',
     metadataBackend: 'builtin',
   },
+  systemLocale: detectLocale(navigator.languages),
   converterCapabilities: { nativeFormats: [], phpVersion: null },
   mediaCapabilities: {
     ocr: { available: false, version: null, languages: [] },
@@ -72,8 +80,10 @@ const initialState = window.__DEVTOOLS_INITIAL_STATE__ ?? {
   },
 };
 const settings = ref<Settings>(initialState.settings);
-const systemLanguages = ref<readonly string[]>(Array.from(navigator.languages));
-const locale = computed(() => resolveLocale(settings.value.language, systemLanguages.value));
+const systemLocale = ref(
+  initialSystemLocale(nativeInitialState?.systemLocale, navigator.languages),
+);
+const locale = computed(() => resolveLocale(settings.value.language, systemLocale.value));
 provideI18n(locale);
 const osTheme = useOsTheme();
 const theme = computed(() => {
@@ -162,7 +172,9 @@ function handleOpenColor(): void {
 }
 
 function handleLanguageChange(): void {
-  systemLanguages.value = Array.from(navigator.languages);
+  if (nativeInitialState === undefined) {
+    systemLocale.value = detectLocale(navigator.languages);
+  }
 }
 
 function syncViewportMetrics(): void {

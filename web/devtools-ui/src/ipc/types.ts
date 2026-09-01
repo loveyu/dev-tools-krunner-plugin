@@ -28,6 +28,7 @@ export type Settings = {
 export type InitialState = {
   readonly version: string;
   readonly settings: Settings;
+  readonly systemLocale: Exclude<LanguageMode, 'system'>;
   readonly converterCapabilities: ConverterCapabilities;
   readonly mediaCapabilities: MediaCapabilities;
   readonly metadataCapabilities: MetadataCapabilities;
