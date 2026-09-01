@@ -7,7 +7,7 @@ use tao::dpi::LogicalSize;
 use tao::event_loop::{EventLoop, EventLoopProxy};
 use tao::monitor::MonitorHandle;
 use tao::window::{Window, WindowBuilder};
-use url::{Host, Url};
+use url::Url;
 use wry::{WebView, WebViewBuilder};
 
 use crate::media_processor::{MediaCapabilities, MediaProcessingResult};
@@ -379,15 +379,8 @@ fn host_is_loopback(host: &url::Host<&str>) -> bool {
 }
 
 fn is_loopback_http_url(url: &Url) -> bool {
-    if !matches!(url.scheme(), "http" | "https") {
-        return false;
-    }
-    match url.host() {
-        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
-        Some(Host::Ipv4(address)) => address.is_loopback(),
-        Some(Host::Ipv6(address)) => address.is_loopback(),
-        None => false,
-    }
+    matches!(url.scheme(), "http" | "https")
+        && url.host().is_some_and(|host| host_is_loopback(&host))
 }
 
 #[cfg(test)]

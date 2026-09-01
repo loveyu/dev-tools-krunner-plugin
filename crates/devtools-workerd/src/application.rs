@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use devtools_core::Settings;
 use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoopBuilder};
+use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 
 use crate::global_shortcut::ShortcutManager;
 use crate::ipc::{parse_web_request, WebRequest};
@@ -21,7 +21,9 @@ use crate::window_manager::WindowManager;
 pub enum UserEvent {
     OpenLauncher,
     OpenQuickInput,
-    QuickInputSubmitted { text: String },
+    QuickInputSubmitted {
+        text: String,
+    },
     OpenJson(String),
     OpenConvert(String),
     OpenOcr,
@@ -38,6 +40,14 @@ pub enum UserEvent {
     MediaProcessingFinished(MediaProcessingResult),
     MetadataProcessingFinished(MetadataProcessingResult),
     ColorPickingFinished(crate::ColorPickResult),
+    /// 后台快捷键注册的结果；授权弹窗可能让注册耗时长达 60s，故经事件回传。
+    ShortcutApplied {
+        next: Box<Settings>,
+        result: Result<(), String>,
+        /// 启动路径：成功无需持久化（设置本就来自磁盘），失败仅内存禁用；
+        /// 设置更新路径：成功才持久化，失败保持原设置并回显错误。
+        from_startup: bool,
+    },
     Restart,
     Quit,
 }
@@ -95,11 +105,17 @@ impl Application {
             current_settings.show_tray = false;
         }
 
-        let mut shortcut = ShortcutManager::new(proxy.clone())?;
-        if let Err(error) = shortcut.apply(&current_settings) {
-            eprintln!("devtools-workerd: failed to register global shortcut: {error}");
+        let shortcut = ShortcutManager::new(proxy.clone())?;
+        // 注册可能等待 KDE 授权弹窗（上限 60s），改为后台执行，结果经
+        // ShortcutApplied 事件回传；校验失败在启动期同步禁用并继续。
+        if let Err(error) = shortcut.validate(&current_settings) {
+            eprintln!("devtools-workerd: invalid global shortcut settings: {error}");
             current_settings.global_shortcut_enabled = false;
             current_settings.quick_input_enabled = false;
+        } else if let Err(error) =
+            submit_shortcut_apply(&shortcut, proxy.clone(), current_settings.clone(), true)
+        {
+            eprintln!("devtools-workerd: failed to schedule global shortcut registration: {error}");
         }
 
         let registry = Arc::new(ToolRegistry::standard());
@@ -240,23 +256,26 @@ impl Application {
                             windows.send_settings(current_settings.clone(), None);
                         }
                         Ok(WebRequest::WindowHide) => windows.hide(),
-                        Ok(WebRequest::SettingsUpdate { settings: next }) => match update_settings(
-                            &store,
-                            &executable,
-                            &mut tray,
-                            &mut shortcut,
-                            &current_settings,
-                            &next,
-                        ) {
-                            Ok(()) => {
-                                current_settings = next;
-                                windows.send_settings(current_settings.clone(), None);
+                        Ok(WebRequest::SettingsUpdate { settings: next }) => {
+                            match schedule_settings_update(
+                                &store,
+                                &executable,
+                                &mut tray,
+                                &shortcut,
+                                &proxy,
+                                &current_settings,
+                                next,
+                            ) {
+                                Ok(()) => { /* 涉及快捷键时由 ShortcutApplied 事件收尾 */
+                                }
+                                Err(error) => {
+                                    eprintln!(
+                                        "devtools-workerd: failed to update settings: {error}"
+                                    );
+                                    windows.send_settings(current_settings.clone(), Some(&error));
+                                }
                             }
-                            Err(error) => {
-                                eprintln!("devtools-workerd: failed to update settings: {error}");
-                                windows.send_settings(current_settings.clone(), Some(&error));
-                            }
-                        },
+                        }
                         Err(error) => {
                             eprintln!("devtools-workerd: invalid webview IPC request: {error}")
                         }
@@ -275,6 +294,38 @@ impl Application {
                     windows.restore();
                     windows.send_color_pick_result(&result);
                 }
+                Event::UserEvent(UserEvent::ShortcutApplied {
+                    next,
+                    result,
+                    from_startup,
+                }) => match result {
+                    Ok(()) if !from_startup => {
+                        // 快捷键注册成功才持久化；previous 取当前内存值，
+                        // 排队期间的多次更新也能得到正确的 autostart 差量。
+                        let previous = current_settings.clone();
+                        match commit_settings(&store, &executable, &mut tray, &previous, &next) {
+                            Ok(()) => {
+                                current_settings = *next;
+                                windows.send_settings(current_settings.clone(), None);
+                            }
+                            Err(error) => {
+                                eprintln!("devtools-workerd: failed to update settings: {error}");
+                                windows.send_settings(current_settings.clone(), Some(&error));
+                            }
+                        }
+                    }
+                    Ok(()) => { /* 启动注册成功：设置本就来自磁盘，无需持久化 */
+                    }
+                    Err(error) => {
+                        eprintln!("devtools-workerd: failed to register global shortcut: {error}");
+                        if from_startup {
+                            // 启动失败仅禁用内存态，磁盘不动，下次启动重试。
+                            current_settings.global_shortcut_enabled = false;
+                            current_settings.quick_input_enabled = false;
+                        }
+                        windows.send_settings(current_settings.clone(), Some(&error));
+                    }
+                },
                 Event::UserEvent(UserEvent::Restart) => {
                     tray.shutdown();
                     platform::restart(&executable);
@@ -294,26 +345,68 @@ impl Application {
     }
 }
 
-fn update_settings(
+/// 处理设置更新：快捷键有变化时先排队后台注册（注册成功经事件收尾），
+/// 其余直接同步提交。校验失败立即返回错误，不产生任何副作用。
+fn schedule_settings_update(
     store: &SettingsStore,
     executable: &Path,
     tray: &mut TrayManager,
-    shortcut: &mut ShortcutManager,
+    shortcut: &ShortcutManager,
+    proxy: &EventLoopProxy<UserEvent>,
+    previous: &Settings,
+    next: Settings,
+) -> Result<(), String> {
+    validate_settings(&next)?;
+    if shortcuts_differ(previous, &next) {
+        return submit_shortcut_apply(shortcut, proxy.clone(), next, false);
+    }
+    commit_settings(store, executable, tray, previous, &next)?;
+    Ok(())
+}
+
+/// 提交一次后台快捷键注册，结果经用户事件回传。
+fn submit_shortcut_apply(
+    shortcut: &ShortcutManager,
+    proxy: EventLoopProxy<UserEvent>,
+    next: Settings,
+    from_startup: bool,
+) -> Result<(), String> {
+    let next = Box::new(next);
+    let snapshot = (*next).clone();
+    shortcut.apply_async(snapshot, move |result| {
+        let _ = proxy.send_event(UserEvent::ShortcutApplied {
+            next,
+            result,
+            from_startup,
+        });
+    })
+}
+
+/// 完成设置持久化与托盘同步；不涉及快捷键（注册在 worker 线程）。
+fn commit_settings(
+    store: &SettingsStore,
+    executable: &Path,
+    tray: &mut TrayManager,
     previous: &Settings,
     next: &Settings,
 ) -> Result<(), String> {
-    validate_settings(next)?;
-    shortcut.apply(next)?;
-    store.apply(previous, next, executable).map_err(|error| {
-        let _ = shortcut.apply(previous);
-        error.to_string()
-    })?;
+    store
+        .apply(previous, next, executable)
+        .map_err(|error| error.to_string())?;
     if let Err(error) = tray.set_visible(next.show_tray, next.language) {
+        // 托盘失败仅回滚持久化设置；快捷键注册独立于本函数，不受影响。
         let _ = store.apply(next, previous, executable);
-        let _ = shortcut.apply(previous);
-        return Err(error);
+        return Err(error.to_string());
     }
     Ok(())
+}
+
+/// 快捷键相关字段是否有变化；变化时注册须经 worker 线程（可能等待授权弹窗）。
+fn shortcuts_differ(previous: &Settings, next: &Settings) -> bool {
+    previous.global_shortcut_enabled != next.global_shortcut_enabled
+        || previous.global_shortcut != next.global_shortcut
+        || previous.quick_input_enabled != next.quick_input_enabled
+        || previous.quick_input_shortcut != next.quick_input_shortcut
 }
 
 fn validate_settings(settings: &Settings) -> Result<(), String> {
