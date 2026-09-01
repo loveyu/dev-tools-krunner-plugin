@@ -96,8 +96,7 @@ mod tests {
     #[test]
     fn icon_contains_white_code_marks() {
         let pixels = rgba();
-        assert!(pixels
-            .chunks_exact(4)
-            .any(|pixel| pixel == [255, 255, 255, 255]));
+        let center = ((32 * ICON_SIZE + 32) * 4) as usize;
+        assert_eq!(&pixels[center..center + 4], &[255, 255, 255, 255]);
     }
 }
