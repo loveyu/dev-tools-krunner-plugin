@@ -326,6 +326,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+// WebView 内嵌 HTML 无法打开新窗口，外链统一经 IPC 交给系统默认浏览器。
+// 纯浏览器调试（无 window.ipc）时保持默认行为。
+function handleExternalLinkClick(event: MouseEvent): void {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) {
+    return;
+  }
+  const anchor = event.target;
+  if (!(anchor instanceof Element)) {
+    return;
+  }
+  const link = anchor.closest('a[href]');
+  if (!(link instanceof HTMLAnchorElement)) {
+    return;
+  }
+  const href = link.getAttribute('href');
+  if (href === null || !/^https?:\/\//i.test(href) || window.ipc === undefined) {
+    return;
+  }
+  event.preventDefault();
+  postRequest({ type: 'openExternal', url: link.href });
+}
+
 onMounted(() => {
   syncViewportMetrics();
   window.addEventListener('resize', syncViewportMetrics);
@@ -344,6 +366,7 @@ onMounted(() => {
   window.addEventListener('devtools:open-launcher', handleOpenLauncher);
   window.addEventListener('devtools:settings', handleSettings);
   window.addEventListener('languagechange', handleLanguageChange);
+  document.addEventListener('click', handleExternalLinkClick, true);
 });
 
 onBeforeUnmount(() => {
@@ -363,6 +386,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('devtools:open-launcher', handleOpenLauncher);
   window.removeEventListener('devtools:settings', handleSettings);
   window.removeEventListener('languagechange', handleLanguageChange);
+  document.removeEventListener('click', handleExternalLinkClick, true);
 });
 </script>
 

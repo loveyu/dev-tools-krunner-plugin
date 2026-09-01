@@ -73,6 +73,20 @@ pub fn copy_text(text: &str) -> Result<(), String> {
     clipboard.set_text(text).map_err(|error| error.to_string())
 }
 
+/// 用系统默认浏览器打开外部 http(s) 链接。
+/// WebView 以自定义协议加载，无法自行打开新窗口，必须交给 Shell 打开。
+pub fn open_external_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|error| format!("invalid url: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("refused to open non-http url: {url}"));
+    }
+    Command::new("explorer")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open url with explorer: {error}"))
+}
+
 pub fn pick_metadata_path() -> Option<PathBuf> {
     rfd::FileDialog::new()
         .set_title("Choose an image, video, or media file")

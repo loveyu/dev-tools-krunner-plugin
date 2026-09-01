@@ -156,6 +156,11 @@ impl Application {
                                 eprintln!("devtools-workerd: failed to copy webview text: {error}");
                             }
                         }
+                        Ok(WebRequest::OpenExternal { url }) => {
+                            if let Err(error) = platform::open_external_url(&url) {
+                                eprintln!("devtools-workerd: failed to open external url: {error}");
+                            }
+                        }
                         Ok(WebRequest::NativeConvert {
                             request_id,
                             format,

@@ -37,6 +37,7 @@ export type InitialState = {
 export type WebRequest =
   | { readonly type: 'frontendReady' }
   | { readonly type: 'clipboardWrite'; readonly text: string }
+  | { readonly type: 'openExternal'; readonly url: string }
   | {
       readonly type: 'nativeConvert';
       readonly requestId: string;

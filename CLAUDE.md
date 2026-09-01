@@ -13,6 +13,12 @@ Runner 目标平台为 KDE Plasma 6；Worker 支持 Debian 13 KDE Wayland/X11 �
 
 代码风格见 [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md)（核心：注释统一用中文）。
 
+## 文件与目录规模红线
+
+- 单文件最长 **1000 行**（硬上限）；**超过 800 行**时提示应拆分模块/组件再继续。
+- 单目录最多 **50 个文件、30 个子文件夹**（硬上限）；**超过 40 个文件**必须重新组织，
+  **超过 20 个子文件夹**时应考虑重新组织。
+
 ## 常用命令
 
 ```bash
@@ -69,9 +75,17 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
   Rust、后端或网络；Rust 只负责工具注册和页面路由。
 - `editor` / `image-editor` / `edit-image` / `imageedit` / `imgedit` 打开 TOAST UI Image Editor。
   图片选择、拖放、粘贴、编辑、复制 PNG 和 PNG/JPEG 导出均在 WebView 内完成，并关闭使用统计。
-- `watermark` / `wm` / `image-watermark` 打开纯前端图片水印。文字/图片平铺水印、角度、透明度、
-  间距、复制和导出均由 TypeScript + Canvas 完成。交互参考 TransparentLC/watermarker，但不复制其
-  AGPL-3.0 源码；图片工具页面底部保留原项目入口，README 维护第三方代码来源与许可证说明。
+- `watermark` / `wm` / `image-watermark` 打开纯前端图片水印。功能对齐 TransparentLC/watermarker：
+  文字（多行、时间占位符模板 `{Y}-{M}-{D} {h}:{m}:{s}`、字号/字重/空心/斜体/阴影/居中/颜色）与图片
+  平铺水印、缩放、偏移、可为负的间隔、「水印图片不遮原图」镂空遮罩、PNG/JPEG/WebP 导出与质量，
+  全部由 TypeScript + Canvas 完成并在参数变化时实时预览（预览直出 canvas 元素、只在保存/复制时编码，
+  避免每秒重编码造成活锁；导出用原图分辨率）。输出格式经运行时探测，WebKitGTK 缺 WebP 编码时自动隐藏。
+  不复制其 AGPL-3.0 源码；页面底部保留原项目入口，README 维护第三方代码来源与许可证说明。
+- WebView 内的外部 http(s) 链接不可直接打开（wry 未设 `new_window_req_handler` 时 WebKitGTK 会丢弃
+  新窗口请求）。处理链路：前端 `App.vue` 捕获阶段拦截外链 click → IPC `openExternal` → Worker
+  `platform::open_external_url`（Linux `xdg-open`，Windows `explorer`）；同时 Worker 给 WebView 挂
+  `new_window_req_handler`（拒绝并转系统浏览器）与 `navigation_handler`（只放行应用自身 URL：blob/data/
+  about/devtools 协议与 loopback 调试服务器），防止应用外壳被外部站点顶替。
 - Worker 业务层固定为 `Application -> WindowManager -> WebViewManager / IPC -> Platform`；业务模块
   不得出现操作系统条件编译或 GTK/WebKitGTK/WebView2 API。`target_os` 选择只能位于
   `src/platform/mod.rs`，Linux 与 Windows 具体实现分别放在 `platform/linux.rs`、`platform/windows.rs`。

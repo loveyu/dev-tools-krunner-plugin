@@ -1,28 +1,13 @@
-import { encoderQuality, initialTargetDimensions } from '../image-compression/model';
 import type { OutputImageType } from '../image-compression/types';
-import { createTileOrigins, degreesToRadians, normalizePercentage } from './model';
-
-export type WatermarkContent =
-  | {
-      readonly type: 'image';
-      readonly file: File;
-      readonly width: number;
-    }
-  | {
-      readonly type: 'text';
-      readonly color: string;
-      readonly fontSize: number;
-      readonly text: string;
-    };
-
-export type WatermarkRenderOptions = {
-  readonly angle: number;
-  readonly horizontalGap: number;
-  readonly mimeType: OutputImageType;
-  readonly opacityPercent: number;
-  readonly qualityPercent: number;
-  readonly verticalGap: number;
-};
+import {
+  canvasFontSpec,
+  createTileOrigins,
+  degreesToRadians,
+  expandTimeTemplate,
+  previewScale,
+  splitWatermarkLines,
+} from './model';
+import type { TextStyle, WatermarkSettings } from './model';
 
 export type WatermarkRenderResult = {
   readonly blob: Blob;
@@ -31,90 +16,232 @@ export type WatermarkRenderResult = {
   readonly width: number;
 };
 
-export async function renderWatermark(
-  sourceFile: File,
-  content: WatermarkContent,
-  options: WatermarkRenderOptions,
-): Promise<WatermarkRenderResult> {
-  const source = await loadImage(sourceFile);
-  const dimensions = initialTargetDimensions(source.naturalWidth, source.naturalHeight);
+export type WatermarkRenderInput = {
+  readonly source: HTMLImageElement;
+  readonly watermarkImage: HTMLImageElement | null;
+  readonly settings: WatermarkSettings;
+  readonly now: Date;
+  /** 预览传入分辨率上限；导出传 null 表示使用原图分辨率。 */
+  readonly preview: boolean;
+};
+
+/** 遮罩镂空模式的黑纱不透明度，与水印不透明度滑块相互独立。 */
+const KEEP_VISIBLE_MASK_ALPHA = 0.5;
+const TEXT_LINE_HEIGHT_RATIO = 1.2;
+const TEXT_OUTLINE_WIDTH_RATIO = 0.08;
+const TEXT_SHADOW_BLUR_RATIO = 0.25;
+/** 预览时间戳每秒刷新即可，模板展开精度为秒。 */
+export const PREVIEW_CLOCK_TICK_MS = 1000;
+
+/** 同步绘制水印并返回画布；预览直接展示画布，导出才需要编码成 blob。 */
+export function composeWatermark(input: WatermarkRenderInput): HTMLCanvasElement {
+  const { source, watermarkImage, settings, now, preview } = input;
+  const scale = preview ? previewScale(source.naturalWidth, source.naturalHeight) : 1;
+  const width = Math.max(1, Math.round(source.naturalWidth * scale));
+  const height = Math.max(1, Math.round(source.naturalHeight * scale));
+
   const canvas = document.createElement('canvas');
-  canvas.width = dimensions.width;
-  canvas.height = dimensions.height;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
-  if (context === null) throw new Error('errors.canvasUnavailable');
+  if (context === null) throw new Error('watermark.errors.canvasUnavailable');
 
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
-  if (options.mimeType === 'image/jpeg') {
+  if (settings.outputType === 'image/jpeg') {
+    // JPEG 无透明通道，透明原图直接编码会得到黑底，先垫白。
     context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillRect(0, 0, width, height);
   }
-  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, 0, width, height);
 
-  context.save();
-  context.translate(canvas.width / 2, canvas.height / 2);
-  context.rotate(degreesToRadians(options.angle));
-  context.globalAlpha = normalizePercentage(options.opacityPercent, 28) / 100;
-  if (content.type === 'text') {
-    drawTextWatermarks(context, canvas, content, options);
-  } else {
-    await drawImageWatermarks(context, canvas, content, options);
+  if (settings.mode === 'text') {
+    drawTextWatermarks(context, width, height, settings, now, scale);
+  } else if (watermarkImage !== null) {
+    drawImageWatermarks(context, width, height, watermarkImage, settings, scale);
   }
-  context.restore();
+  return canvas;
+}
 
-  const blob = await encodeCanvas(canvas, options.mimeType, options.qualityPercent);
-  if (blob.type !== options.mimeType) throw new Error('errors.outputFormatUnavailable');
-  return { blob, mimeType: options.mimeType, ...dimensions };
+export async function renderWatermark(input: WatermarkRenderInput): Promise<WatermarkRenderResult> {
+  const { settings } = input;
+  const canvas = composeWatermark(input);
+  const blob = await encodeCanvas(canvas, settings.outputType, settings.quality);
+  if (blob.type !== settings.outputType) {
+    throw new Error('watermark.errors.outputFormatUnavailable');
+  }
+  return { blob, mimeType: settings.outputType, width: canvas.width, height: canvas.height };
 }
 
 function drawTextWatermarks(
   context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  content: Extract<WatermarkContent, { readonly type: 'text' }>,
-  options: WatermarkRenderOptions,
+  width: number,
+  height: number,
+  settings: WatermarkSettings,
+  now: Date,
+  scale: number,
 ): void {
-  const fontSize = Math.max(8, content.fontSize);
-  context.font = `600 ${String(fontSize)}px sans-serif`;
-  context.fillStyle = content.color;
-  context.textAlign = 'center';
+  const expanded = expandTimeTemplate(settings.text, now);
+  const lines = splitWatermarkLines(expanded);
+  if (lines.length === 0) return;
+
+  const block = buildTextBlock(lines, settings.textStyle, scale * settings.scale);
+  const origins = createTileOrigins(
+    width,
+    height,
+    block.width,
+    block.height,
+    settings.gapX * scale,
+    settings.gapY * scale,
+    settings.offsetX * scale,
+    settings.offsetY * scale,
+  );
+
+  context.save();
+  // offset 已并入平铺原点网格，这里只负责把坐标系挪到画布中心并旋转。
+  context.translate(width / 2, height / 2);
+  context.rotate(degreesToRadians(settings.angle));
+  context.globalAlpha = settings.opacity;
+  for (const { x, y } of origins) {
+    context.drawImage(block.canvas, x - block.width / 2, y - block.height / 2);
+  }
+  context.restore();
+}
+
+/** 水印块离屏画布：平铺时按 (x - width/2, y - height/2) 以中心定位。 */
+type TextBlock = {
+  readonly canvas: HTMLCanvasElement;
+  readonly width: number;
+  readonly height: number;
+};
+
+function buildTextBlock(lines: readonly string[], style: TextStyle, scale: number): TextBlock {
+  const fontSize = Math.max(1, style.fontSize * scale);
+  const lineHeight = fontSize * TEXT_LINE_HEIGHT_RATIO;
+  const measure = document.createElement('canvas').getContext('2d');
+  const font = canvasFontSpec(style, fontSize);
+  if (measure !== null) {
+    measure.font = font;
+  }
+  const lineWidths = lines.map((line) =>
+    measure === null ? fontSize * 0.6 * line.length : measure.measureText(line).width,
+  );
+  const textWidth = Math.max(1, ...lineWidths);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(textWidth + fontSize * TEXT_SHADOW_BLUR_RATIO * 2);
+  canvas.height = Math.ceil(lineHeight * lines.length + fontSize * TEXT_SHADOW_BLUR_RATIO);
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('watermark.errors.canvasUnavailable');
+
+  context.font = font;
   context.textBaseline = 'middle';
-  const markWidth = Math.max(1, context.measureText(content.text).width);
-  const markHeight = fontSize * 1.4;
-  for (const { x, y } of createTileOrigins(
-    canvas.width,
-    canvas.height,
-    markWidth,
-    markHeight,
-    options.horizontalGap,
-    options.verticalGap,
-  )) {
-    context.fillText(content.text, x, y);
+  context.textAlign = style.center ? 'center' : 'left';
+  if (style.shadow) {
+    context.shadowColor = style.shadowColor;
+    context.shadowBlur = fontSize * TEXT_SHADOW_BLUR_RATIO;
   }
+  const strokeWidth = Math.max(1, fontSize * TEXT_OUTLINE_WIDTH_RATIO);
+  lines.forEach((line, index) => {
+    const y = lineHeight * index + lineHeight / 2 + fontSize * TEXT_SHADOW_BLUR_RATIO;
+    const x = style.center ? canvas.width / 2 : fontSize * TEXT_SHADOW_BLUR_RATIO;
+    if (style.outline) {
+      context.lineWidth = strokeWidth;
+      context.strokeStyle = style.textColor;
+      context.strokeText(line, x, y);
+    } else {
+      context.fillStyle = style.textColor;
+      context.fillText(line, x, y);
+    }
+  });
+  return { canvas, width: canvas.width, height: canvas.height };
 }
 
-async function drawImageWatermarks(
+function drawImageWatermarks(
   context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  content: Extract<WatermarkContent, { readonly type: 'image' }>,
-  options: WatermarkRenderOptions,
-): Promise<void> {
-  const watermark = await loadImage(content.file);
-  const markWidth = Math.max(16, content.width);
-  const markHeight = Math.max(1, (markWidth * watermark.naturalHeight) / watermark.naturalWidth);
-  for (const { x, y } of createTileOrigins(
-    canvas.width,
-    canvas.height,
+  width: number,
+  height: number,
+  watermarkImage: HTMLImageElement,
+  settings: WatermarkSettings,
+  scale: number,
+): void {
+  if (watermarkImage.naturalWidth <= 0 || watermarkImage.naturalHeight <= 0) return;
+  const markWidth = Math.max(1, watermarkImage.naturalWidth * settings.scale * scale);
+  const markHeight = Math.max(
+    1,
+    (markWidth * watermarkImage.naturalHeight) / watermarkImage.naturalWidth,
+  );
+  const origins = createTileOrigins(
+    width,
+    height,
     markWidth,
     markHeight,
-    options.horizontalGap,
-    options.verticalGap,
-  )) {
-    context.drawImage(watermark, x - markWidth / 2, y - markHeight / 2, markWidth, markHeight);
+    settings.gapX * scale,
+    settings.gapY * scale,
+    settings.offsetX * scale,
+    settings.offsetY * scale,
+  );
+
+  if (settings.keepImageVisible) {
+    drawMaskedWatermarks(
+      context,
+      width,
+      height,
+      watermarkImage,
+      origins,
+      settings.angle,
+      markWidth,
+      markHeight,
+    );
+    return;
   }
+
+  context.save();
+  // offset 已并入平铺原点网格，这里只负责把坐标系挪到画布中心并旋转。
+  context.translate(width / 2, height / 2);
+  context.rotate(degreesToRadians(settings.angle));
+  context.globalAlpha = settings.opacity;
+  for (const { x, y } of origins) {
+    context.drawImage(watermarkImage, x - markWidth / 2, y - markHeight / 2, markWidth, markHeight);
+  }
+  context.restore();
 }
 
-async function loadImage(file: File): Promise<HTMLImageElement> {
+/** 「水印图片不遮原图」：黑纱盖全图，再在旋转平铺位置挖洞透出原图。 */
+function drawMaskedWatermarks(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  watermarkImage: HTMLImageElement,
+  origins: readonly { readonly x: number; readonly y: number }[],
+  angle: number,
+  markWidth: number,
+  markHeight: number,
+): void {
+  const mask = document.createElement('canvas');
+  mask.width = width;
+  mask.height = height;
+  const maskContext = mask.getContext('2d');
+  if (maskContext === null) throw new Error('watermark.errors.canvasUnavailable');
+
+  maskContext.fillStyle = `rgba(0, 0, 0, ${String(KEEP_VISIBLE_MASK_ALPHA)})`;
+  maskContext.fillRect(0, 0, width, height);
+  // 洞的位置与普通平铺一致：中心平移 + 旋转，offset 已并入原点网格。
+  maskContext.translate(width / 2, height / 2);
+  maskContext.rotate(degreesToRadians(angle));
+  maskContext.globalCompositeOperation = 'destination-out';
+  for (const { x, y } of origins) {
+    maskContext.drawImage(
+      watermarkImage,
+      x - markWidth / 2,
+      y - markHeight / 2,
+      markWidth,
+      markHeight,
+    );
+  }
+  context.drawImage(mask, 0, 0);
+}
+
+export async function loadImageElement(file: File): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(file);
   try {
     const image = new Image();
@@ -125,7 +252,7 @@ async function loadImage(file: File): Promise<HTMLImageElement> {
         resolve();
       };
       image.onerror = (): void => {
-        reject(new Error('errors.imageDecodeFailed'));
+        reject(new Error('watermark.errors.imageDecodeFailed'));
       };
     });
     return image;
@@ -137,19 +264,36 @@ async function loadImage(file: File): Promise<HTMLImageElement> {
 async function encodeCanvas(
   canvas: HTMLCanvasElement,
   mimeType: OutputImageType,
-  qualityPercent: number,
+  quality: number,
 ): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (blob === null) {
-          reject(new Error('errors.imageEncodeFailed'));
+          reject(new Error('watermark.errors.imageEncodeFailed'));
           return;
         }
         resolve(blob);
       },
       mimeType,
-      encoderQuality(qualityPercent),
+      mimeType === 'image/png' ? undefined : quality,
     );
   });
+}
+
+/** 探测当前 WebView 实际支持的编码格式；WebKitGTK 可能缺少 WebP 编码。 */
+export async function probeOutputSupport(
+  types: readonly OutputImageType[],
+): Promise<OutputImageType[]> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const supported: OutputImageType[] = [];
+  for (const type of types) {
+    const blob = await encodeCanvas(canvas, type, 0.9);
+    if (blob.type === type) {
+      supported.push(type);
+    }
+  }
+  return supported;
 }

@@ -163,10 +163,20 @@ impl WebViewManager {
             WEB_APP,
             debug.development_url.as_deref(),
         );
+        // 兜底加固：内嵌 HTML 的 WebView 无法自行打开外部站点。
+        // - 新窗口请求（target=_blank / window.open）：一律拒绝并交给系统默认浏览器。
+        // - 普通导航：只放行应用自身（blob/data/about、自定义协议与调试服务器）。
         let builder = builder
             .with_devtools(debug.enabled)
             .with_clipboard(true)
             .with_initialization_script(&initialization_script)
+            .with_new_window_req_handler(move |url: String, _features| {
+                if let Err(error) = platform::open_external_url(&url) {
+                    eprintln!("devtools-workerd: failed to open external url: {error}");
+                }
+                wry::NewWindowResponse::Deny
+            })
+            .with_navigation_handler(|url: String| is_internal_navigation_url(&url))
             .with_ipc_handler(move |request| {
                 let _ = web_proxy.send_event(UserEvent::WebMessage(request.body().to_owned()));
             });
@@ -345,6 +355,29 @@ fn environment_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
 }
 
+/// 判断导航目标是否属于应用自身（blob/data/about、自定义协议与调试服务器），
+/// 用于拒绝 WebView 被外部站点导航顶替。
+fn is_internal_navigation_url(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    match parsed.scheme() {
+        "http" | "https" => {
+            matches!(parsed.host(), Some(host @ (url::Host::Ipv4(_) | url::Host::Ipv6(_) | url::Host::Domain(_))) if host_is_loopback(&host))
+        }
+        "blob" | "data" | "about" | "devtools" => true,
+        _ => false,
+    }
+}
+
+fn host_is_loopback(host: &url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain(domain) => domain.eq_ignore_ascii_case("localhost"),
+        url::Host::Ipv4(address) => address.is_loopback(),
+        url::Host::Ipv6(address) => address.is_loopback(),
+    }
+}
+
 fn is_loopback_http_url(url: &Url) -> bool {
     if !matches!(url.scheme(), "http" | "https") {
         return false;
@@ -396,5 +429,28 @@ mod tests {
         );
         assert!(development_url_for_port("0").is_err());
         assert!(development_url_for_port("invalid").is_err());
+    }
+
+    #[test]
+    fn navigation_guard_only_allows_app_owned_urls() {
+        for value in [
+            "http://127.0.0.1:7173/",
+            "http://localhost:5173/index.html",
+            "http://[::1]:9333/Main.html",
+            "blob:http://127.0.0.1:7173/5a646392",
+            "about:blank",
+            "devtools://localhost/index.html",
+        ] {
+            assert!(is_internal_navigation_url(value), "应放行 {value}");
+        }
+        for value in [
+            "https://github.com/TransparentLC/watermarker",
+            "http://example.com/",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "not a url",
+        ] {
+            assert!(!is_internal_navigation_url(value), "应拒绝 {value}");
+        }
     }
 }

@@ -18,6 +18,9 @@ pub enum WebRequest {
     ClipboardWrite {
         text: String,
     },
+    OpenExternal {
+        url: String,
+    },
     NativeConvert {
         request_id: String,
         format: NativeFormat,
@@ -106,6 +109,15 @@ mod tests {
             Ok(WebRequest::MetadataImage { request_id, mime_type, .. })
                 if request_id == "meta-2" && mime_type == "image/png"
         ));
+    }
+
+    #[test]
+    fn parses_open_external_request() {
+        assert!(matches!(
+            parse_web_request(r#"{"type":"openExternal","url":"https://github.com/TransparentLC/watermarker"}"#),
+            Ok(WebRequest::OpenExternal { url }) if url == "https://github.com/TransparentLC/watermarker"
+        ));
+        assert!(parse_web_request(r#"{"type":"openExternal","url":"file:///etc/passwd"}"#).is_ok());
     }
 
     #[test]

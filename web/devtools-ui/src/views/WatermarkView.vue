@@ -1,76 +1,120 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NColorPicker,
-  NEmpty,
-  NInput,
-  NInputNumber,
-  NRadio,
-  NRadioGroup,
-  NSelect,
-  NSlider,
-  NSpin,
-  NTag,
-  useMessage,
-} from 'naive-ui';
+import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue';
+import { NAlert, NCard, NEmpty, NTag, useMessage } from 'naive-ui';
 
+import WatermarkSettingsPanel from '../components/WatermarkSettingsPanel.vue';
 import { useI18n } from '../i18n/runtime';
-import { validateCompressionFileMetadata } from '../tools/image-compression/model';
-import { COMPRESSION_IMAGE_TYPES, OUTPUT_IMAGE_TYPES } from '../tools/image-compression/types';
-import type { OutputImageType } from '../tools/image-compression/types';
-import { firstImageFile } from '../tools/media/image';
-import { WATERMARKER_PROJECT_URL, watermarkedFilename } from '../tools/watermark/model';
-import { renderWatermark } from '../tools/watermark/renderer';
-import type { WatermarkContent, WatermarkRenderResult } from '../tools/watermark/renderer';
+import { validateImageMetadata, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
+import {
+  DEFAULT_TIME_TEMPLATE,
+  WATERMARKER_PROJECT_URL,
+  WATERMARK_SETTINGS_KEY,
+  createDefaultWatermarkSettings,
+  watermarkedFilename,
+} from '../tools/watermark/model';
+import { composeWatermark, loadImageElement, renderWatermark } from '../tools/watermark/renderer';
 
 defineOptions({ name: 'WatermarkView' });
 
-type WatermarkMode = 'image' | 'text';
-
 const message = useMessage();
 const { t } = useI18n();
+
 const sourceInput = ref<HTMLInputElement | null>(null);
 const watermarkInput = ref<HTMLInputElement | null>(null);
 const sourceFile = ref<File | null>(null);
+const sourceImage = ref<HTMLImageElement | null>(null);
 const watermarkFile = ref<File | null>(null);
-const sourceUrl = ref<string | null>(null);
-const outputUrl = ref<string | null>(null);
-const outputResult = ref<WatermarkRenderResult | null>(null);
-const mode = ref<WatermarkMode>('text');
-const text = ref<string>('仅供办理业务使用');
-const color = ref<string>('#ffffff');
-const fontSize = ref<number | null>(36);
-const imageWidth = ref<number | null>(180);
-const opacity = ref<number>(28);
-const angle = ref<number>(-24);
-const horizontalGap = ref<number | null>(120);
-const verticalGap = ref<number | null>(90);
-const outputType = ref<OutputImageType>('image/png');
-const quality = ref<number>(92);
-const busy = ref<boolean>(false);
+const watermarkImage = ref<HTMLImageElement | null>(null);
+const previewCanvasHost = ref<HTMLElement | null>(null);
+const hasPreview = ref(false);
+const saving = ref(false);
 const error = ref<string | null>(null);
 
-const outputTypeOptions = OUTPUT_IMAGE_TYPES.map((value) => ({
-  label: value === 'image/jpeg' ? 'JPEG' : value === 'image/webp' ? 'WebP' : 'PNG',
-  value,
-}));
-const canRender = computed(
-  () =>
-    sourceFile.value !== null &&
-    (mode.value === 'text' ? text.value.trim() !== '' : watermarkFile.value !== null),
-);
+/** 默认文案对齐原项目：两行说明 + 一行时间模板。 */
+function defaultWatermarkText(): string {
+  return `${t('watermark.defaults.line1')}\n${t('watermark.defaults.line2')}\n${DEFAULT_TIME_TEMPLATE}`;
+}
+
+const settings = reactive(createDefaultWatermarkSettings(defaultWatermarkText()));
+// 设置面板通过 inject 直接修改该对象，驱动实时预览。
+provide(WATERMARK_SETTINGS_KEY, settings);
+
+const hasTimeTemplate = computed(() => /\{[YMDhms]\}/.test(settings.text));
+const canSave = computed(() => {
+  if (sourceImage.value === null) return false;
+  return settings.mode === 'text' ? settings.text.trim() !== '' : watermarkImage.value !== null;
+});
+
+let previewTimer: number | null = null;
+let clockTimer: number | null = null;
 
 onMounted(() => {
   window.addEventListener('paste', handlePaste);
+  schedulePreview();
 });
+
 onBeforeUnmount(() => {
   window.removeEventListener('paste', handlePaste);
-  releaseSourceUrl();
-  releaseOutputUrl();
+  if (previewTimer !== null) window.clearTimeout(previewTimer);
+  if (clockTimer !== null) window.clearInterval(clockTimer);
 });
+
+// 水印含时间占位符时按秒刷新预览，模拟真实渲染时刻。
+watch(
+  hasTimeTemplate,
+  (active) => {
+    startClock(active);
+  },
+  { immediate: true },
+);
+
+watch(
+  settings,
+  () => {
+    schedulePreview();
+  },
+  { deep: true },
+);
+
+function startClock(active: boolean): void {
+  if (clockTimer !== null) {
+    window.clearInterval(clockTimer);
+    clockTimer = null;
+  }
+  if (active) {
+    clockTimer = window.setInterval(() => {
+      schedulePreview();
+    }, 1000);
+  }
+}
+
+function schedulePreview(): void {
+  if (previewTimer !== null) window.clearTimeout(previewTimer);
+  previewTimer = window.setTimeout(() => {
+    renderPreview();
+  }, 120);
+}
+
+/** 预览直接输出 canvas 元素，跳过耗时的图片编码；编码只发生在保存/复制时。 */
+function renderPreview(): void {
+  const source = sourceImage.value;
+  const host = previewCanvasHost.value;
+  if (source === null || host === null) return;
+  try {
+    const canvas = composeWatermark({
+      source,
+      watermarkImage: watermarkImage.value,
+      settings: { ...settings, textStyle: { ...settings.textStyle } },
+      now: new Date(),
+      preview: true,
+    });
+    canvas.className = 'watermark-view__preview-canvas';
+    host.replaceChildren(canvas);
+    hasPreview.value = true;
+  } catch (caught: unknown) {
+    error.value = t(errorMessage(caught));
+  }
+}
 
 function openSourcePicker(): void {
   sourceInput.value?.click();
@@ -84,7 +128,7 @@ function handleSourceInput(event: Event): void {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || input.files === null) return;
   const file = firstImageFile(input.files);
-  if (file !== null) selectSource(file);
+  if (file !== null) void selectSource(file);
   input.value = '';
 }
 
@@ -92,13 +136,13 @@ function handleWatermarkInput(event: Event): void {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || input.files === null) return;
   const file = firstImageFile(input.files);
-  if (file !== null) selectWatermark(file);
+  if (file !== null) void selectWatermark(file);
   input.value = '';
 }
 
 function handleDrop(event: DragEvent): void {
   const file = event.dataTransfer === null ? null : firstImageFile(event.dataTransfer.files);
-  if (file !== null) selectSource(file);
+  if (file !== null) void selectSource(file);
 }
 
 function handlePaste(event: ClipboardEvent): void {
@@ -106,119 +150,128 @@ function handlePaste(event: ClipboardEvent): void {
   const file = firstImageFile(event.clipboardData.files);
   if (file === null) return;
   event.preventDefault();
-  selectSource(file);
+  void selectSource(file);
 }
 
-function selectSource(file: File): void {
-  const validationError = validateCompressionFileMetadata(file.type, file.size);
-  if (validationError !== null) {
-    error.value = validationError;
+async function selectSource(file: File): Promise<void> {
+  try {
+    const validationError = validateImageMetadata(file.type, file.size);
+    if (validationError !== null) {
+      error.value = validationError;
+      return;
+    }
+    const image = await loadImageElement(file);
+    sourceFile.value = file;
+    sourceImage.value = image;
+    error.value = null;
+    schedulePreview();
+  } catch (caught: unknown) {
+    error.value = t(errorMessage(caught));
+  }
+}
+
+async function selectWatermark(file: File): Promise<void> {
+  try {
+    const validationError = validateImageMetadata(file.type, file.size);
+    if (validationError !== null) {
+      error.value = validationError;
+      return;
+    }
+    const image = await loadImageElement(file);
+    watermarkFile.value = file;
+    watermarkImage.value = image;
+    error.value = null;
+    schedulePreview();
+  } catch (caught: unknown) {
+    error.value = t(errorMessage(caught));
+  }
+}
+
+async function saveImage(): Promise<void> {
+  const source = sourceImage.value;
+  if (source === null) {
+    error.value = t('watermark.errors.noSource');
     return;
   }
-  releaseSourceUrl();
-  releaseOutputUrl();
-  sourceFile.value = file;
-  sourceUrl.value = URL.createObjectURL(file);
-  outputResult.value = null;
-  error.value = null;
-}
-
-function selectWatermark(file: File): void {
-  const validationError = validateCompressionFileMetadata(file.type, file.size);
-  if (validationError !== null) {
-    error.value = validationError;
-    return;
-  }
-  watermarkFile.value = file;
-  error.value = null;
-}
-
-async function applyWatermark(): Promise<void> {
-  const source = sourceFile.value;
-  const content = watermarkContent();
-  if (source === null || content === null) {
+  if (settings.mode === 'text' && settings.text.trim() === '') {
     error.value = t('watermark.errors.missingSourceOrContent');
     return;
   }
-  const gapX = horizontalGap.value;
-  const gapY = verticalGap.value;
-  if (gapX === null || gapY === null || gapX < 8 || gapY < 8) {
-    error.value = t('watermark.errors.invalidSpacing');
+  if (settings.mode === 'image' && watermarkImage.value === null) {
+    error.value = t('watermark.errors.noWatermarkImage');
     return;
   }
-
-  busy.value = true;
+  saving.value = true;
   error.value = null;
   try {
-    const result = await renderWatermark(source, content, {
-      angle: angle.value,
-      horizontalGap: gapX,
-      mimeType: outputType.value,
-      opacityPercent: opacity.value,
-      qualityPercent: quality.value,
-      verticalGap: gapY,
+    const result = await renderWatermark({
+      source,
+      watermarkImage: watermarkImage.value,
+      settings: { ...settings, textStyle: { ...settings.textStyle } },
+      now: new Date(),
+      preview: false,
     });
-    releaseOutputUrl();
-    outputResult.value = result;
-    outputUrl.value = URL.createObjectURL(result.blob);
+    downloadBlob(result.blob, watermarkedFilename(sourceFile.value?.name ?? '', result.mimeType));
+    message.success(t('watermark.messages.imageSaved'));
   } catch (caught: unknown) {
     error.value = t(errorMessage(caught));
   } finally {
-    busy.value = false;
+    saving.value = false;
   }
 }
 
-function watermarkContent(): WatermarkContent | null {
-  if (mode.value === 'text') {
-    const value = text.value.trim();
-    if (value === '') return null;
-    return {
-      type: 'text',
-      color: color.value,
-      fontSize: fontSize.value ?? 36,
-      text: value,
-    };
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+  } finally {
+    // 给 WebView 下载处理器留出启动时间，再回收 blob URL。
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 10_000);
   }
-  const file = watermarkFile.value;
-  return file === null ? null : { type: 'image', file, width: imageWidth.value ?? 180 };
 }
 
-function downloadOutput(): void {
-  const source = sourceFile.value;
-  const result = outputResult.value;
-  const url = outputUrl.value;
-  if (source === null || result === null || url === null) return;
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = watermarkedFilename(source.name, result.mimeType);
-  link.click();
+function copyPreview(): void {
+  const canvas = previewCanvasHost.value?.querySelector('canvas');
+  if (canvas === null || canvas === undefined) return;
+  void (async (): Promise<void> => {
+    try {
+      const blob = await canvasToPngBlob(canvas);
+      const clipboard = Reflect.get(navigator, 'clipboard') as Clipboard | undefined;
+      const ClipboardItemConstructor = Reflect.get(globalThis, 'ClipboardItem') as
+        typeof ClipboardItem | undefined;
+      if (clipboard === undefined || ClipboardItemConstructor === undefined) {
+        throw new Error('ui.thisWebviewDoesNotSupportImageClipboardAccess');
+      }
+      await clipboard.write([new ClipboardItemConstructor({ [blob.type]: blob })]);
+      message.success(t('watermark.messages.imageCopied'));
+    } catch (caught: unknown) {
+      error.value = t(errorMessage(caught));
+    }
+  })();
 }
 
-function copyOutput(): void {
-  const result = outputResult.value;
-  const clipboard = Reflect.get(navigator, 'clipboard') as Clipboard | undefined;
-  const ClipboardItemConstructor = Reflect.get(globalThis, 'ClipboardItem') as
-    typeof ClipboardItem | undefined;
-  if (result === null || clipboard === undefined || ClipboardItemConstructor === undefined) {
-    error.value = t('ui.thisWebviewDoesNotSupportImageClipboardAccess');
-    return;
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob === null) {
+        reject(new Error('watermark.errors.imageEncodeFailed'));
+        return;
+      }
+      resolve(blob);
+    }, 'image/png');
+  });
+}
+
+function firstImageFile(files: FileList): File | null {
+  for (const file of files) {
+    if (file.type.startsWith('image/')) return file;
   }
-  void clipboard.write([new ClipboardItemConstructor({ [result.blob.type]: result.blob })]).then(
-    () => message.success(t('watermark.messages.imageCopied')),
-    (caught: unknown) => {
-      error.value = t('ui.failedToCopyImageError', { error: errorMessage(caught) });
-    },
-  );
-}
-
-function releaseSourceUrl(): void {
-  if (sourceUrl.value !== null) URL.revokeObjectURL(sourceUrl.value);
-  sourceUrl.value = null;
-}
-
-function releaseOutputUrl(): void {
-  if (outputUrl.value !== null) URL.revokeObjectURL(outputUrl.value);
-  outputUrl.value = null;
+  return null;
 }
 
 function errorMessage(caught: unknown): string {
@@ -246,119 +299,47 @@ function errorMessage(caught: unknown): string {
       ref="sourceInput"
       class="watermark-view__file-input"
       type="file"
-      :accept="COMPRESSION_IMAGE_TYPES.join(',')"
+      :accept="SUPPORTED_IMAGE_TYPES.join(',')"
       @change="handleSourceInput"
     />
     <input
       ref="watermarkInput"
       class="watermark-view__file-input"
       type="file"
-      :accept="COMPRESSION_IMAGE_TYPES.join(',')"
+      :accept="SUPPORTED_IMAGE_TYPES.join(',')"
       @change="handleWatermarkInput"
     />
 
     <section class="watermark-view__workspace">
-      <NCard :bordered="false" :title="t('watermark.settings.title')">
-        <div class="watermark-view__form">
-          <NButton block @click="openSourcePicker">{{
-            t('watermark.actions.chooseSource')
-          }}</NButton>
-          <NRadioGroup v-model:value="mode" name="watermark-mode">
-            <NRadio value="text">{{ t('watermark.mode.text') }}</NRadio>
-            <NRadio value="image">{{ t('watermark.mode.image') }}</NRadio>
-          </NRadioGroup>
-
-          <template v-if="mode === 'text'">
-            <label class="watermark-view__field">
-              <span>{{ t('watermark.fields.text') }}</span>
-              <NInput v-model:value="text" :maxlength="120" />
-            </label>
-            <div class="watermark-view__split-fields">
-              <label class="watermark-view__field">
-                <span>{{ t('watermark.fields.fontSize') }}</span>
-                <NInputNumber v-model:value="fontSize" :max="240" :min="8" :precision="0" />
-              </label>
-              <label class="watermark-view__field">
-                <span>{{ t('watermark.fields.color') }}</span>
-                <NColorPicker v-model:value="color" :show-alpha="false" />
-              </label>
-            </div>
-          </template>
-          <template v-else>
-            <NButton block @click="openWatermarkPicker">
-              {{ t('watermark.actions.chooseWatermarkImage') }}
-            </NButton>
-            <p v-if="watermarkFile !== null" class="watermark-view__hint">
-              {{ watermarkFile.name }}
-            </p>
-            <label class="watermark-view__field">
-              <span>{{ t('watermark.fields.imageWidth') }}</span>
-              <NInputNumber v-model:value="imageWidth" :max="2000" :min="16" :precision="0" />
-            </label>
-          </template>
-
-          <label class="watermark-view__field">
-            <span>{{ t('watermark.fields.opacity') }} · {{ opacity }}%</span>
-            <NSlider v-model:value="opacity" :max="100" :min="1" :step="1" />
-          </label>
-          <label class="watermark-view__field">
-            <span>{{ t('watermark.fields.angle') }} · {{ angle }}°</span>
-            <NSlider v-model:value="angle" :max="90" :min="-90" :step="1" />
-          </label>
-          <div class="watermark-view__split-fields">
-            <label class="watermark-view__field">
-              <span>{{ t('watermark.fields.horizontalGap') }}</span>
-              <NInputNumber v-model:value="horizontalGap" :max="2000" :min="8" :precision="0" />
-            </label>
-            <label class="watermark-view__field">
-              <span>{{ t('watermark.fields.verticalGap') }}</span>
-              <NInputNumber v-model:value="verticalGap" :max="2000" :min="8" :precision="0" />
-            </label>
-          </div>
-          <div class="watermark-view__split-fields">
-            <label class="watermark-view__field">
-              <span>{{ t('ui.outputFormat') }}</span>
-              <NSelect v-model:value="outputType" :options="outputTypeOptions" />
-            </label>
-            <label class="watermark-view__field">
-              <span>{{ t('ui.quality') }} · {{ quality }}%</span>
-              <NSlider v-model:value="quality" :disabled="outputType === 'image/png'" />
-            </label>
-          </div>
-          <NButton
-            block
-            :disabled="!canRender"
-            :loading="busy"
-            type="primary"
-            @click="applyWatermark"
-          >
-            {{ t('watermark.actions.apply') }}
-          </NButton>
-          <div class="watermark-view__actions">
-            <NButton block :disabled="outputResult === null" @click="copyOutput">
-              {{ t('ui.copyPng') }}
-            </NButton>
-            <NButton block :disabled="outputResult === null" @click="downloadOutput">
-              {{ t('watermark.actions.download') }}
-            </NButton>
-          </div>
-        </div>
+      <NCard :bordered="false" class="watermark-view__preview-card" content-style="height: 100%">
+        <button
+          v-if="sourceImage === null"
+          class="watermark-view__empty"
+          type="button"
+          @click="openSourcePicker"
+        >
+          <NEmpty :description="t('watermark.empty.chooseDropOrPaste')" />
+        </button>
+        <div
+          v-else
+          ref="previewCanvasHost"
+          class="watermark-view__preview"
+          :aria-label="t('watermark.preview.alt')"
+          role="img"
+        />
       </NCard>
 
-      <NCard :bordered="false" class="watermark-view__preview-card">
-        <NSpin :show="busy">
-          <button
-            v-if="sourceUrl === null"
-            class="watermark-view__empty"
-            type="button"
-            @click="openSourcePicker"
-          >
-            <NEmpty :description="t('watermark.empty.chooseDropOrPaste')" />
-          </button>
-          <div v-else class="watermark-view__preview">
-            <img :src="outputUrl ?? sourceUrl" :alt="t('watermark.preview.alt')" />
-          </div>
-        </NSpin>
+      <NCard :bordered="false" :title="t('watermark.settings.title')" class="watermark-view__panel">
+        <WatermarkSettingsPanel
+          :watermark-file-name="watermarkFile?.name ?? null"
+          :can-save="canSave"
+          :saving="saving"
+          :copy-enabled="hasPreview"
+          @choose-source="openSourcePicker"
+          @choose-watermark="openWatermarkPicker"
+          @save="saveImage"
+          @copy="copyPreview"
+        />
       </NCard>
     </section>
 
@@ -375,9 +356,8 @@ function errorMessage(caught: unknown): string {
 .watermark-view {
   display: grid;
   gap: var(--page-gap);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   height: var(--app-viewport-height);
-  min-height: 0;
-  overflow: auto;
   padding: var(--page-padding);
 
   &__header {
@@ -405,38 +385,17 @@ function errorMessage(caught: unknown): string {
   &__workspace {
     display: grid;
     gap: 1rem;
-    grid-template-columns: minmax(19rem, 23rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(19rem, 22rem);
     min-height: 0;
   }
 
-  &__form,
-  &__field {
-    display: grid;
-    gap: 0.6rem;
-  }
-
-  &__field,
-  &__hint {
-    color: var(--muted-color);
-    font-size: 0.82rem;
-  }
-
-  &__hint {
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__split-fields,
-  &__actions {
-    display: grid;
-    gap: 0.75rem;
-    grid-template-columns: 1fr 1fr;
-  }
-
   &__preview-card {
-    min-height: clamp(20rem, 62vh, 36rem);
+    min-height: 0;
+
+    :deep(.n-card__content) {
+      display: grid;
+      min-height: 0;
+    }
   }
 
   &__empty {
@@ -444,7 +403,7 @@ function errorMessage(caught: unknown): string {
     border: 0;
     cursor: pointer;
     display: grid;
-    min-height: clamp(18rem, 58vh, 34rem);
+    min-height: 100%;
     place-items: center;
     width: 100%;
   }
@@ -454,15 +413,26 @@ function errorMessage(caught: unknown): string {
       50% / 1rem 1rem;
     border-radius: 0.5rem;
     display: grid;
-    min-height: clamp(18rem, 58vh, 34rem);
+    min-height: 0;
     overflow: hidden;
     place-items: center;
 
-    img {
+    // 预览画布由脚本插入（renderPreview），保持与容器等比缩放。
+    :deep(canvas) {
       display: block;
-      max-height: 70vh;
+      max-height: 100%;
       max-width: 100%;
       object-fit: contain;
+    }
+  }
+
+  &__panel {
+    min-height: 0;
+    overflow: hidden;
+
+    :deep(.n-card__content) {
+      max-height: 100%;
+      overflow: auto;
     }
   }
 }
@@ -477,15 +447,7 @@ function errorMessage(caught: unknown): string {
 
     &__workspace {
       grid-template-columns: 1fr;
-    }
-  }
-}
-
-@media (width <= 520px) {
-  .watermark-view {
-    &__actions,
-    &__split-fields {
-      grid-template-columns: 1fr;
+      grid-template-rows: minmax(14rem, 1fr) auto;
     }
   }
 }
