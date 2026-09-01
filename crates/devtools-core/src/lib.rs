@@ -71,6 +71,9 @@ pub enum Action {
     CompressImage,
     EditImage,
     WatermarkImage,
+    EncryptText,
+    InspectMetadata,
+    PickColor,
 }
 
 /// Worker 交给具体工具执行的请求。
@@ -160,6 +163,17 @@ pub struct Settings {
     pub theme: ThemeMode,
     #[serde(default)]
     pub language: LanguageMode,
+    #[serde(default)]
+    pub metadata_backend: MetadataBackend,
+}
+
+/// 媒体元数据读取后端；内置实现不依赖系统命令，外部模式使用用户 PATH 中的 ExifTool。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MetadataBackend {
+    #[default]
+    Builtin,
+    External,
 }
 
 /// WebView 的外观主题；默认跟随 KDE/系统配色。
@@ -199,6 +213,7 @@ impl Default for Settings {
             quick_input_height: default_quick_input_height(),
             theme: ThemeMode::System,
             language: LanguageMode::System,
+            metadata_backend: MetadataBackend::Builtin,
         }
     }
 }
@@ -283,5 +298,6 @@ mod tests {
         assert_eq!(settings.quick_input_shortcut, "Ctrl+Alt+KeyI");
         assert_eq!(settings.quick_input_width, 560);
         assert_eq!(settings.quick_input_height, 56);
+        assert_eq!(settings.metadata_backend, MetadataBackend::Builtin);
     }
 }

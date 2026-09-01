@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use devtools_core::{Action, Context, Tool, ToolError, ToolRequest, ToolResult};
 use devtools_tools::{
-    BarcodeTool, ConvertTool, ImageCompressionTool, ImageEditorTool, JsonTool, OcrTool,
-    WatermarkTool,
+    BarcodeTool, ColorTool, ConvertTool, CryptoTool, ImageCompressionTool, ImageEditorTool,
+    JsonTool, MetadataTool, OcrTool, WatermarkTool,
 };
 
 /// Worker 启动时注册的业务工具集合。
@@ -23,6 +23,9 @@ impl ToolRegistry {
         registry.register(ImageCompressionTool);
         registry.register(ImageEditorTool);
         registry.register(WatermarkTool);
+        registry.register(CryptoTool);
+        registry.register(MetadataTool);
+        registry.register(ColorTool);
         registry
     }
 
@@ -37,7 +40,8 @@ impl ToolRegistry {
             "convert" => {
                 Context::from_text(payload).map_err(|error| ToolError::new(error.to_string()))?
             }
-            "ocr" | "barcode" | "image-compress" | "image-editor" | "watermark" => Context::Empty,
+            "ocr" | "barcode" | "image-compress" | "image-editor" | "watermark" | "crypto"
+            | "metadata" | "color" => Context::Empty,
             _ => return Err(ToolError::new(format!("unsupported tool: {tool_id}"))),
         };
         let action = match tool_id {
@@ -48,6 +52,9 @@ impl ToolRegistry {
             "image-compress" => Action::CompressImage,
             "image-editor" => Action::EditImage,
             "watermark" => Action::WatermarkImage,
+            "crypto" => Action::EncryptText,
+            "metadata" => Action::InspectMetadata,
+            "color" => Action::PickColor,
             _ => return Err(ToolError::new(format!("unsupported tool: {tool_id}"))),
         };
         let request = ToolRequest { context, action };
@@ -129,5 +136,14 @@ mod tests {
                 .payload,
             ""
         );
+        for tool in ["crypto", "metadata", "color"] {
+            assert_eq!(
+                ToolRegistry::standard()
+                    .execute(tool, "ignored")
+                    .expect("新增页面请求应执行成功")
+                    .payload,
+                ""
+            );
+        }
     }
 }

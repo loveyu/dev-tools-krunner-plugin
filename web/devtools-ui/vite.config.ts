@@ -24,6 +24,8 @@ export default defineConfig({
         'src/tools/media/image.ts',
         'src/tools/media/result.ts',
         'src/tools/watermark/model.ts',
+        'src/tools/color/model.ts',
+        'src/tools/crypto/model.ts',
       ],
       thresholds: {
         branches: 100,

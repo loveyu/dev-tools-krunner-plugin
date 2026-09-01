@@ -2,6 +2,7 @@ use devtools_core::Settings;
 use tao::event_loop::{EventLoop, EventLoopProxy};
 
 use crate::media_processor::{MediaCapabilities, MediaProcessingResult};
+use crate::metadata_processor::{MetadataCapabilities, MetadataProcessingResult};
 use crate::native_converter::{ConverterCapabilities, NativeConversionResult};
 use crate::platform::{QuickInputInjector, QuickInputWindow};
 use crate::webview_manager::WebViewManager;
@@ -21,6 +22,7 @@ impl WindowManager {
         settings: Settings,
         converter_capabilities: ConverterCapabilities,
         media_capabilities: MediaCapabilities,
+        metadata_capabilities: MetadataCapabilities,
         quick_input_history: Vec<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
@@ -30,6 +32,7 @@ impl WindowManager {
                 settings,
                 converter_capabilities,
                 media_capabilities,
+                metadata_capabilities,
             )?,
             quick_input: QuickInputWindow::new(proxy, quick_input_history)?,
             quick_input_injector: QuickInputInjector::new(),
@@ -84,6 +87,18 @@ impl WindowManager {
         self.webview.open_watermark();
     }
 
+    pub fn open_crypto(&self) {
+        self.webview.open_crypto();
+    }
+
+    pub fn open_metadata(&self) {
+        self.webview.open_metadata();
+    }
+
+    pub fn open_color(&self) {
+        self.webview.open_color();
+    }
+
     pub fn open_settings(&self, settings: Settings) {
         self.webview.open_settings(settings);
     }
@@ -104,7 +119,19 @@ impl WindowManager {
         self.webview.send_media_processing_result(result);
     }
 
+    pub fn send_metadata_processing_result(&self, result: &MetadataProcessingResult) {
+        self.webview.send_metadata_processing_result(result);
+    }
+
+    pub fn send_color_pick_result(&self, result: &crate::ColorPickResult) {
+        self.webview.send_color_pick_result(result);
+    }
+
     pub fn hide(&self) {
         self.webview.hide();
+    }
+
+    pub fn restore(&self) {
+        self.webview.restore();
     }
 }

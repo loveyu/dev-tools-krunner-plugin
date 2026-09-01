@@ -12,6 +12,7 @@
 //! 打开 JSON Workbench；
 //! 输入 `compress` / `squoosh` 打开纯前端图片压缩页，输入 `editor` 打开图片编辑器，
 //! 输入 `watermark` / `wm` 打开纯前端图片水印；
+//! 输入 `crypto` 打开多算法加解密，输入 `exif` 查看媒体元数据，输入 `color` 取色；
 //! 回车复制选中项并弹出桌面通知。
 //!
 //! match 结构在总线上的形状为

@@ -14,7 +14,8 @@ import {
 } from 'naive-ui';
 
 import { useI18n } from '../i18n/runtime';
-import type { LanguageMode, Settings, ThemeMode } from '../ipc/types';
+import type { LanguageMode, MetadataBackend, Settings, ThemeMode } from '../ipc/types';
+import type { MetadataCapabilities } from '../tools/metadata/types';
 
 defineOptions({ name: 'SettingsView' });
 
@@ -23,6 +24,7 @@ const props = defineProps<{
   readonly version: string;
   readonly canGoBack: boolean;
   readonly error: string | null;
+  readonly metadataCapabilities: MetadataCapabilities;
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +43,16 @@ const languageOptions = computed<{ readonly label: string; readonly value: Langu
   { label: t('ui.simplifiedChinese'), value: 'zh-CN' },
   { label: t('ui.traditionalChinese'), value: 'zh-TW' },
   { label: t('ui.english'), value: 'en-US' },
+]);
+const metadataBackendOptions = computed<
+  { readonly label: string; readonly value: MetadataBackend; readonly disabled?: boolean }[]
+>(() => [
+  { label: t('settings.metadata.builtin'), value: 'builtin' },
+  {
+    label: t('settings.metadata.external'),
+    value: 'external',
+    disabled: !props.metadataCapabilities.externalAvailable,
+  },
 ]);
 
 function updateShowTray(showTray: boolean): void {
@@ -82,6 +94,10 @@ function updateTheme(theme: ThemeMode): void {
 function updateLanguage(language: LanguageMode): void {
   emit('update', { ...props.settings, language });
 }
+
+function updateMetadataBackend(metadataBackend: MetadataBackend): void {
+  emit('update', { ...props.settings, metadataBackend });
+}
 </script>
 
 <template>
@@ -100,6 +116,23 @@ function updateLanguage(language: LanguageMode): void {
 
     <NCard :title="t('ui.general')" :bordered="false">
       <NList>
+        <NListItem>
+          <div class="settings-view__item">
+            <div>
+              <strong>{{ t('settings.metadata.title') }}</strong>
+              <p>
+                {{ t('settings.metadata.description') }}
+                {{ metadataCapabilities.externalVersion ?? t('settings.metadata.externalMissing') }}
+              </p>
+            </div>
+            <NSelect
+              class="settings-view__metadata-select"
+              :options="metadataBackendOptions"
+              :value="settings.metadataBackend"
+              @update:value="updateMetadataBackend"
+            />
+          </div>
+        </NListItem>
         <NListItem>
           <div class="settings-view__item settings-view__item--top">
             <div>
@@ -273,6 +306,10 @@ function updateLanguage(language: LanguageMode): void {
 
   &__theme-select {
     flex: 0 0 9rem;
+  }
+
+  &__metadata-select {
+    flex: 0 0 14rem;
   }
 
   &__shortcut {

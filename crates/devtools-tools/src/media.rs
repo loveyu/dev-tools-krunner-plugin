@@ -90,6 +90,60 @@ impl Tool for WatermarkTool {
     }
 }
 
+/// 加解密工具只负责打开页面；密钥和正文始终留在 WebView 内。
+#[derive(Debug, Default)]
+pub struct CryptoTool;
+
+impl Tool for CryptoTool {
+    fn id(&self) -> &'static str {
+        "crypto"
+    }
+
+    fn can_handle(&self, context: &Context, action: Action) -> bool {
+        matches!(context, Context::Empty) && action == Action::EncryptText
+    }
+
+    fn execute(&self, request: ToolRequest) -> Result<ToolResult, ToolError> {
+        execute_empty_tool(self, request, "crypto")
+    }
+}
+
+/// 元数据工具负责打开查看页面，路径解析由 Worker 的受限处理线程执行。
+#[derive(Debug, Default)]
+pub struct MetadataTool;
+
+impl Tool for MetadataTool {
+    fn id(&self) -> &'static str {
+        "metadata"
+    }
+
+    fn can_handle(&self, context: &Context, action: Action) -> bool {
+        matches!(context, Context::Empty) && action == Action::InspectMetadata
+    }
+
+    fn execute(&self, request: ToolRequest) -> Result<ToolResult, ToolError> {
+        execute_empty_tool(self, request, "metadata")
+    }
+}
+
+/// 颜色工具的固定色板在 WebView 内，屏幕取色通过平台层完成。
+#[derive(Debug, Default)]
+pub struct ColorTool;
+
+impl Tool for ColorTool {
+    fn id(&self) -> &'static str {
+        "color"
+    }
+
+    fn can_handle(&self, context: &Context, action: Action) -> bool {
+        matches!(context, Context::Empty) && action == Action::PickColor
+    }
+
+    fn execute(&self, request: ToolRequest) -> Result<ToolResult, ToolError> {
+        execute_empty_tool(self, request, "color")
+    }
+}
+
 fn execute_empty_tool(
     tool: &impl Tool,
     request: ToolRequest,
@@ -165,5 +219,25 @@ mod tests {
             .expect("图片水印工具应接受空上下文");
 
         assert!(result.payload.is_empty());
+    }
+
+    #[test]
+    fn new_workbenches_accept_their_empty_requests() {
+        for result in [
+            CryptoTool.execute(ToolRequest {
+                context: Context::Empty,
+                action: Action::EncryptText,
+            }),
+            MetadataTool.execute(ToolRequest {
+                context: Context::Empty,
+                action: Action::InspectMetadata,
+            }),
+            ColorTool.execute(ToolRequest {
+                context: Context::Empty,
+                action: Action::PickColor,
+            }),
+        ] {
+            assert!(result.expect("页面工具应接受空上下文").payload.is_empty());
+        }
     }
 }

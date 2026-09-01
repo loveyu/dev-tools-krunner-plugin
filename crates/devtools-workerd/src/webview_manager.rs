@@ -5,6 +5,7 @@ use tao::window::{Window, WindowBuilder};
 use wry::{WebView, WebViewBuilder};
 
 use crate::media_processor::{MediaCapabilities, MediaProcessingResult};
+use crate::metadata_processor::{MetadataCapabilities, MetadataProcessingResult};
 use crate::native_converter::{ConverterCapabilities, NativeConversionResult};
 use crate::platform;
 use crate::UserEvent;
@@ -18,6 +19,7 @@ struct InitialState {
     settings: Settings,
     converter_capabilities: ConverterCapabilities,
     media_capabilities: MediaCapabilities,
+    metadata_capabilities: MetadataCapabilities,
 }
 
 #[derive(Serialize)]
@@ -46,6 +48,7 @@ impl WebViewManager {
         settings: Settings,
         converter_capabilities: ConverterCapabilities,
         media_capabilities: MediaCapabilities,
+        metadata_capabilities: MetadataCapabilities,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let window = WindowBuilder::new()
             .with_title("DevTools")
@@ -59,6 +62,7 @@ impl WebViewManager {
             settings,
             converter_capabilities,
             media_capabilities,
+            metadata_capabilities,
         };
         let initial_state =
             serde_json::to_string(&initial_state).expect("InitialState 只含可序列化字段");
@@ -125,6 +129,24 @@ impl WebViewManager {
         self.show();
     }
 
+    pub fn open_crypto(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-crypto", &());
+        self.show();
+    }
+
+    pub fn open_metadata(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-metadata", &());
+        self.show();
+    }
+
+    pub fn open_color(&self) {
+        self.use_workspace_size();
+        self.dispatch("devtools:open-color", &());
+        self.show();
+    }
+
     pub fn open_settings(&self, settings: Settings) {
         self.use_workspace_size();
         self.send_settings(settings, None);
@@ -144,8 +166,20 @@ impl WebViewManager {
         self.dispatch("devtools:media-process-result", result);
     }
 
+    pub fn send_metadata_processing_result(&self, result: &MetadataProcessingResult) {
+        self.dispatch("devtools:metadata-process-result", result);
+    }
+
+    pub fn send_color_pick_result(&self, result: &crate::ColorPickResult) {
+        self.dispatch("devtools:color-pick-result", result);
+    }
+
     pub fn hide(&self) {
         self.window.set_visible(false);
+    }
+
+    pub fn restore(&self) {
+        self.show();
     }
 
     pub fn copy_to_clipboard(&self, text: &str) {

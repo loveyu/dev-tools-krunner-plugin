@@ -16,12 +16,15 @@ import type { OpenConvertDetail, OpenJsonDetail, Settings, SettingsDetail } from
 import type { FormatId } from './tools/converter/types';
 import type { LauncherAction, LauncherToolId } from './tools/launcher/model';
 import BarcodeStudioView from './views/BarcodeStudioView.vue';
+import ColorPickerView from './views/ColorPickerView.vue';
+import CryptoView from './views/CryptoView.vue';
 import DataConvertView from './views/DataConvertView.vue';
 import ImageCompressionView from './views/ImageCompressionView.vue';
 import ImageEditorView from './views/ImageEditorView.vue';
 import JsonWorkbench from './views/JsonWorkbench.vue';
 import LauncherView from './views/LauncherView.vue';
 import OcrView from './views/OcrView.vue';
+import MetadataView from './views/MetadataView.vue';
 import SettingsView from './views/SettingsView.vue';
 import WatermarkView from './views/WatermarkView.vue';
 
@@ -30,12 +33,15 @@ defineOptions({ name: 'App' });
 type View =
   | 'barcode'
   | 'convert'
+  | 'color'
+  | 'crypto'
   | 'idle'
   | 'image-compress'
   | 'image-editor'
   | 'json'
   | 'launcher'
   | 'ocr'
+  | 'metadata'
   | 'settings'
   | 'watermark';
 
@@ -52,11 +58,17 @@ const initialState = window.__DEVTOOLS_INITIAL_STATE__ ?? {
     quickInputHeight: 56,
     theme: 'system',
     language: 'system',
+    metadataBackend: 'builtin',
   },
   converterCapabilities: { nativeFormats: [], phpVersion: null },
   mediaCapabilities: {
     ocr: { available: false, version: null, languages: [] },
     barcode: { available: false, version: null },
+  },
+  metadataCapabilities: {
+    builtinVersion: 'revelo 0.5.5',
+    externalAvailable: false,
+    externalVersion: null,
   },
 };
 const settings = ref<Settings>(initialState.settings);
@@ -137,6 +149,18 @@ function handleOpenWatermark(): void {
   view.value = 'watermark';
 }
 
+function handleOpenCrypto(): void {
+  view.value = 'crypto';
+}
+
+function handleOpenMetadata(): void {
+  view.value = 'metadata';
+}
+
+function handleOpenColor(): void {
+  view.value = 'color';
+}
+
 function handleLanguageChange(): void {
   systemLanguages.value = Array.from(navigator.languages);
 }
@@ -206,6 +230,15 @@ function openLauncherTool(tool: LauncherToolId, payload: string): void {
     case 'watermark':
       handleOpenWatermark();
       break;
+    case 'crypto':
+      handleOpenCrypto();
+      break;
+    case 'metadata':
+      handleOpenMetadata();
+      break;
+    case 'color':
+      handleOpenColor();
+      break;
   }
 }
 
@@ -242,6 +275,7 @@ function isSettingsDetail(detail: unknown): detail is SettingsDetail {
     typeof candidate['quickInputHeight'] === 'number' &&
     isThemeMode(candidate['theme']) &&
     isLanguageMode(candidate['language']) &&
+    isMetadataBackend(candidate['metadataBackend']) &&
     (error === null || typeof error === 'string')
   );
 }
@@ -252,6 +286,10 @@ function isThemeMode(value: unknown): value is Settings['theme'] {
 
 function isLanguageMode(value: unknown): value is Settings['language'] {
   return value === 'system' || value === 'zh-CN' || value === 'zh-TW' || value === 'en-US';
+}
+
+function isMetadataBackend(value: unknown): value is Settings['metadataBackend'] {
+  return value === 'builtin' || value === 'external';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -266,6 +304,9 @@ onMounted(() => {
   window.addEventListener('devtools:open-image-compress', handleOpenImageCompress);
   window.addEventListener('devtools:open-image-editor', handleOpenImageEditor);
   window.addEventListener('devtools:open-watermark', handleOpenWatermark);
+  window.addEventListener('devtools:open-crypto', handleOpenCrypto);
+  window.addEventListener('devtools:open-metadata', handleOpenMetadata);
+  window.addEventListener('devtools:open-color', handleOpenColor);
   window.addEventListener('devtools:open-settings', handleOpenSettings);
   window.addEventListener('devtools:open-launcher', handleOpenLauncher);
   window.addEventListener('devtools:settings', handleSettings);
@@ -280,6 +321,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('devtools:open-image-compress', handleOpenImageCompress);
   window.removeEventListener('devtools:open-image-editor', handleOpenImageEditor);
   window.removeEventListener('devtools:open-watermark', handleOpenWatermark);
+  window.removeEventListener('devtools:open-crypto', handleOpenCrypto);
+  window.removeEventListener('devtools:open-metadata', handleOpenMetadata);
+  window.removeEventListener('devtools:open-color', handleOpenColor);
   window.removeEventListener('devtools:open-settings', handleOpenSettings);
   window.removeEventListener('devtools:open-launcher', handleOpenLauncher);
   window.removeEventListener('devtools:settings', handleSettings);
@@ -313,6 +357,9 @@ onBeforeUnmount(() => {
       <ImageCompressionView v-if="view === 'image-compress'" />
       <ImageEditorView v-if="view === 'image-editor'" />
       <WatermarkView v-if="view === 'watermark'" />
+      <CryptoView v-if="view === 'crypto'" />
+      <MetadataView v-if="view === 'metadata'" :capabilities="initialState.metadataCapabilities" />
+      <ColorPickerView v-if="view === 'color'" />
       <LauncherView
         v-if="view === 'launcher'"
         :activation="launcherActivation"
@@ -324,6 +371,7 @@ onBeforeUnmount(() => {
         :can-go-back="previousView !== 'idle' && previousView !== 'settings'"
         :error="settingsError"
         :settings="settings"
+        :metadata-capabilities="initialState.metadataCapabilities"
         :version="initialState.version"
         @back="goBack"
         @update="updateSettings"

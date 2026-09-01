@@ -37,9 +37,12 @@ describe('matchLauncherQuery', () => {
   });
 
   it('空输入列出所有入口并支持前缀检索', () => {
-    expect(matchLauncherQuery('')).toHaveLength(8);
+    expect(matchLauncherQuery('')).toHaveLength(11);
     expect(matchLauncherQuery('squ')[0]?.id).toBe('image-compress');
     expect(matchLauncherQuery('图片')[0]?.id).toBe('image-compress');
     expect(matchLauncherQuery('watermarker')[0]?.id).toBe('watermark');
+    expect(matchLauncherQuery('encrypt')[0]?.id).toBe('crypto');
+    expect(matchLauncherQuery('exiftool')[0]?.id).toBe('metadata');
+    expect(matchLauncherQuery('eyedropper')[0]?.id).toBe('color');
   });
 });

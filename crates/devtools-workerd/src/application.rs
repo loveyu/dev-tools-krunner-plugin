@@ -9,6 +9,7 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use crate::global_shortcut::ShortcutManager;
 use crate::ipc::{parse_web_request, WebRequest};
 use crate::media_processor::{MediaProcessingResult, MediaProcessor};
+use crate::metadata_processor::{MetadataProcessingResult, MetadataProcessor};
 use crate::native_converter::{NativeConversionResult, NativeConverter};
 use crate::platform::{self, TrayManager};
 use crate::quick_input::HistoryStore;
@@ -31,10 +32,15 @@ pub enum UserEvent {
     OpenImageCompress,
     OpenImageEditor,
     OpenWatermark,
+    OpenCrypto,
+    OpenMetadata,
+    OpenColor,
     OpenSettings,
     WebMessage(String),
     NativeConversionFinished(NativeConversionResult),
     MediaProcessingFinished(MediaProcessingResult),
+    MetadataProcessingFinished(MetadataProcessingResult),
+    ColorPickingFinished(crate::ColorPickResult),
     Restart,
     Quit,
 }
@@ -70,6 +76,7 @@ impl Application {
 
         let native_converter = NativeConverter::start(proxy.clone());
         let media_processor = MediaProcessor::start(proxy.clone());
+        let metadata_processor = MetadataProcessor::start(proxy.clone());
         let history_store = HistoryStore::from_environment()?;
         let windows = WindowManager::new(
             &event_loop,
@@ -77,6 +84,7 @@ impl Application {
             current_settings.clone(),
             native_converter.capabilities().clone(),
             media_processor.capabilities().clone(),
+            metadata_processor.capabilities().clone(),
             history_store.load(),
         )?;
         let mut tray = TrayManager::new(proxy.clone());
@@ -95,7 +103,7 @@ impl Application {
 
         let registry = Arc::new(ToolRegistry::standard());
         let webview_ready = Arc::new(AtomicBool::new(false));
-        let ipc_guard = platform::start_ipc(proxy, registry, Arc::clone(&webview_ready))?;
+        let ipc_guard = platform::start_ipc(proxy.clone(), registry, Arc::clone(&webview_ready))?;
         eprintln!("devtools-workerd: ready");
 
         if open_settings {
@@ -137,6 +145,9 @@ impl Application {
                 Event::UserEvent(UserEvent::OpenImageCompress) => windows.open_image_compress(),
                 Event::UserEvent(UserEvent::OpenImageEditor) => windows.open_image_editor(),
                 Event::UserEvent(UserEvent::OpenWatermark) => windows.open_watermark(),
+                Event::UserEvent(UserEvent::OpenCrypto) => windows.open_crypto(),
+                Event::UserEvent(UserEvent::OpenMetadata) => windows.open_metadata(),
+                Event::UserEvent(UserEvent::OpenColor) => windows.open_color(),
                 Event::UserEvent(UserEvent::OpenSettings) => {
                     windows.open_settings(current_settings.clone())
                 }
@@ -182,6 +193,46 @@ impl Application {
                                 );
                             }
                         }
+                        Ok(WebRequest::MetadataPick { request_id }) => {
+                            if let Some(path) = platform::pick_metadata_path() {
+                                if let Err(error) = metadata_processor.submit(
+                                    request_id.clone(),
+                                    path,
+                                    current_settings.metadata_backend,
+                                ) {
+                                    windows.send_metadata_processing_result(
+                                        &MetadataProcessingResult::error(request_id, error),
+                                    );
+                                }
+                            } else {
+                                windows.send_metadata_processing_result(
+                                    &MetadataProcessingResult::error(
+                                        request_id,
+                                        "file selection was cancelled",
+                                    ),
+                                );
+                            }
+                        }
+                        Ok(WebRequest::MetadataImage {
+                            request_id,
+                            image_base64,
+                            mime_type,
+                        }) => {
+                            if let Err(error) = metadata_processor.submit_image(
+                                request_id.clone(),
+                                image_base64,
+                                mime_type,
+                                current_settings.metadata_backend,
+                            ) {
+                                windows.send_metadata_processing_result(
+                                    &MetadataProcessingResult::error(request_id, error),
+                                );
+                            }
+                        }
+                        Ok(WebRequest::ColorPick { request_id }) => {
+                            windows.hide();
+                            platform::start_screen_color_picker(request_id, proxy.clone());
+                        }
                         Ok(WebRequest::SettingsGet) => {
                             windows.send_settings(current_settings.clone(), None);
                         }
@@ -213,6 +264,13 @@ impl Application {
                 }
                 Event::UserEvent(UserEvent::MediaProcessingFinished(result)) => {
                     windows.send_media_processing_result(&result);
+                }
+                Event::UserEvent(UserEvent::MetadataProcessingFinished(result)) => {
+                    windows.send_metadata_processing_result(&result);
+                }
+                Event::UserEvent(UserEvent::ColorPickingFinished(result)) => {
+                    windows.restore();
+                    windows.send_color_pick_result(&result);
                 }
                 Event::UserEvent(UserEvent::Restart) => {
                     tray.shutdown();

@@ -10,6 +10,9 @@ pub const BARCODE_MATCH_ID: &str = "barcode:open";
 pub const IMAGE_COMPRESS_MATCH_ID: &str = "image-compress:open";
 pub const IMAGE_EDITOR_MATCH_ID: &str = "image-editor:open";
 pub const WATERMARK_MATCH_ID: &str = "watermark:open";
+pub const CRYPTO_MATCH_ID: &str = "crypto:open";
+pub const METADATA_MATCH_ID: &str = "metadata:open";
+pub const COLOR_MATCH_ID: &str = "color:open";
 
 /// 根据 OCR、条形码、二维码、图片压缩、图片编辑和图片水印触发词构造页面入口。
 pub fn match_for_query(query: &str) -> Option<KMatch> {
@@ -45,6 +48,24 @@ pub fn match_for_query(query: &str) -> Option<KMatch> {
             "image-x-generic",
             "在 WebView 内添加平铺文字或图片水印",
         ),
+        "crypto" => (
+            CRYPTO_MATCH_ID,
+            "打开加解密工具",
+            "document-encrypt",
+            "在 WebView 内使用多组算法加密或解密文本",
+        ),
+        "metadata" => (
+            METADATA_MATCH_ID,
+            "打开媒体信息查看器",
+            "document-properties",
+            "使用内置解析器或 ExifTool 查看图片和视频路径",
+        ),
+        "color" => (
+            COLOR_MATCH_ID,
+            "打开颜色选择器",
+            "color-picker",
+            "在固定色板或任意屏幕位置选择颜色",
+        ),
         _ => return None,
     };
     let mut properties = std::collections::HashMap::new();
@@ -69,6 +90,9 @@ pub fn handles_match_id(match_id: &str) -> bool {
             | IMAGE_COMPRESS_MATCH_ID
             | IMAGE_EDITOR_MATCH_ID
             | WATERMARK_MATCH_ID
+            | CRYPTO_MATCH_ID
+            | METADATA_MATCH_ID
+            | COLOR_MATCH_ID
     )
 }
 
@@ -79,6 +103,9 @@ pub fn open_tool(match_id: &str) -> Result<(), Box<dyn Error>> {
         IMAGE_COMPRESS_MATCH_ID => "image-compress",
         IMAGE_EDITOR_MATCH_ID => "image-editor",
         WATERMARK_MATCH_ID => "watermark",
+        CRYPTO_MATCH_ID => "crypto",
+        METADATA_MATCH_ID => "metadata",
+        COLOR_MATCH_ID => "color",
         _ => return Err(format!("unknown media match id: {match_id}").into()),
     };
     let connection = Connection::session()?;
@@ -126,6 +153,32 @@ fn tool_for_query(query: &str) -> Option<&'static str> {
     {
         return Some("watermark");
     }
+    if matches!(
+        query.as_str(),
+        "crypto" | "encrypt" | "decrypt" | "cipher" | "aes"
+    ) || (query.len() >= 3
+        && ["crypto", "encrypt", "decrypt", "cipher"]
+            .iter()
+            .any(|keyword| keyword.starts_with(&query)))
+    {
+        return Some("crypto");
+    }
+    if matches!(query.as_str(), "exif" | "metadata" | "mediainfo")
+        || (query.len() >= 3
+            && ["exif", "metadata", "mediainfo"]
+                .iter()
+                .any(|keyword| keyword.starts_with(&query)))
+    {
+        return Some("metadata");
+    }
+    if matches!(query.as_str(), "color" | "colour" | "picker" | "eyedropper")
+        || (query.len() >= 3
+            && ["color", "colour", "picker", "eyedropper"]
+                .iter()
+                .any(|keyword| keyword.starts_with(&query)))
+    {
+        return Some("color");
+    }
     None
 }
 
@@ -164,6 +217,9 @@ mod tests {
         assert!(handles_match_id(IMAGE_COMPRESS_MATCH_ID));
         assert!(handles_match_id(IMAGE_EDITOR_MATCH_ID));
         assert!(handles_match_id(WATERMARK_MATCH_ID));
+        assert!(handles_match_id(CRYPTO_MATCH_ID));
+        assert!(handles_match_id(METADATA_MATCH_ID));
+        assert!(handles_match_id(COLOR_MATCH_ID));
         assert!(!handles_match_id("json:open"));
     }
 
@@ -218,5 +274,27 @@ mod tests {
         }
         assert!(match_for_query("wa").is_none());
         assert!(match_for_query("watermarked").is_none());
+    }
+
+    #[test]
+    fn matches_crypto_metadata_and_color_aliases() {
+        for (queries, expected) in [
+            (
+                &["crypto", "encrypt", "decrypt", "cipher", "aes"][..],
+                CRYPTO_MATCH_ID,
+            ),
+            (&["exif", "metadata", "mediainfo"][..], METADATA_MATCH_ID),
+            (
+                &["color", "colour", "picker", "eyedropper"][..],
+                COLOR_MATCH_ID,
+            ),
+        ] {
+            for query in queries {
+                assert_eq!(
+                    match_for_query(query).map(|item| item.0),
+                    Some(expected.to_owned())
+                );
+            }
+        }
     }
 }

@@ -17,12 +17,13 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    GetDC, GetMonitorInfoW, GetPixel, MonitorFromPoint, ReleaseDC, MONITORINFO,
+    MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
-    VK_DOWN, VK_ESCAPE, VK_RETURN, VK_UP,
+    GetAsyncKeyState, SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_RETURN, VK_UP,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor, GetCursorPos,
@@ -36,6 +37,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use wry::{WebView, WebViewBuilder};
 
 use crate::registry::ToolRegistry;
+use crate::ColorPickResult;
 use crate::UserEvent;
 
 pub fn configure_webview<'a>(
@@ -62,6 +64,53 @@ pub fn build_webview(
 pub fn copy_text(text: &str) {
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
         let _ = clipboard.set_text(text);
+    }
+}
+
+pub fn pick_metadata_path() -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Choose an image, video, or media file")
+        .pick_file()
+}
+
+/// Windows 使用桌面 DC 读取全局光标像素，可自然跨越所有已连接显示器。
+pub fn start_screen_color_picker(request_id: String, proxy: EventLoopProxy<UserEvent>) {
+    thread::spawn(move || {
+        let result = pick_windows_color(&request_id);
+        let _ = proxy.send_event(UserEvent::ColorPickingFinished(result));
+    });
+}
+
+fn pick_windows_color(request_id: &str) -> ColorPickResult {
+    while unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0 {
+        thread::sleep(Duration::from_millis(10));
+    }
+    loop {
+        if unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0 {
+            return ColorPickResult::cancelled(request_id.to_owned());
+        }
+        if unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0 {
+            let mut point = POINT::default();
+            if unsafe { GetCursorPos(&mut point) } == 0 {
+                return ColorPickResult::error(request_id.to_owned(), "GetCursorPos failed");
+            }
+            let desktop = unsafe { GetDC(null_mut()) };
+            if desktop.is_null() {
+                return ColorPickResult::error(request_id.to_owned(), "GetDC failed");
+            }
+            let color = unsafe { GetPixel(desktop, point.x, point.y) };
+            unsafe { ReleaseDC(null_mut(), desktop) };
+            if color == u32::MAX {
+                return ColorPickResult::error(request_id.to_owned(), "GetPixel failed");
+            }
+            return ColorPickResult::success(
+                request_id.to_owned(),
+                (color & 0xff) as u8,
+                ((color >> 8) & 0xff) as u8,
+                ((color >> 16) & 0xff) as u8,
+            );
+        }
+        thread::sleep(Duration::from_millis(10));
     }
 }
 

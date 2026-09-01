@@ -32,6 +32,17 @@ pub enum WebRequest {
         #[serde(default)]
         options: MediaOptions,
     },
+    MetadataPick {
+        request_id: String,
+    },
+    MetadataImage {
+        request_id: String,
+        image_base64: String,
+        mime_type: String,
+    },
+    ColorPick {
+        request_id: String,
+    },
     SettingsGet,
     WindowHide,
     SettingsUpdate {
@@ -56,6 +67,9 @@ pub fn tool_event(registry: &ToolRegistry, tool: &str, payload: &str) -> Result<
         "image-compress" => Ok(UserEvent::OpenImageCompress),
         "image-editor" => Ok(UserEvent::OpenImageEditor),
         "watermark" => Ok(UserEvent::OpenWatermark),
+        "crypto" => Ok(UserEvent::OpenCrypto),
+        "metadata" => Ok(UserEvent::OpenMetadata),
+        "color" => Ok(UserEvent::OpenColor),
         _ => Err(format!("unsupported tool: {tool}")),
     }
 }
@@ -84,6 +98,13 @@ mod tests {
                     ..
                 }
             }
+        ));
+        assert!(matches!(
+            parse_web_request(
+                r#"{"type":"metadataImage","requestId":"meta-2","imageBase64":"AA==","mimeType":"image/png"}"#
+            ),
+            Ok(WebRequest::MetadataImage { request_id, mime_type, .. })
+                if request_id == "meta-2" && mime_type == "image/png"
         ));
     }
 
@@ -151,6 +172,30 @@ mod tests {
         assert!(matches!(
             tool_event(&registry, "watermark", ""),
             Ok(UserEvent::OpenWatermark)
+        ));
+        assert!(matches!(
+            tool_event(&registry, "crypto", ""),
+            Ok(UserEvent::OpenCrypto)
+        ));
+        assert!(matches!(
+            tool_event(&registry, "metadata", ""),
+            Ok(UserEvent::OpenMetadata)
+        ));
+        assert!(matches!(
+            tool_event(&registry, "color", ""),
+            Ok(UserEvent::OpenColor)
+        ));
+    }
+
+    #[test]
+    fn parses_metadata_and_color_picker_requests() {
+        assert!(matches!(
+            parse_web_request(r#"{"type":"metadataPick","requestId":"meta-1"}"#),
+            Ok(WebRequest::MetadataPick { request_id }) if request_id == "meta-1"
+        ));
+        assert!(matches!(
+            parse_web_request(r#"{"type":"colorPick","requestId":"color-1"}"#),
+            Ok(WebRequest::ColorPick { request_id }) if request_id == "color-1"
         ));
     }
 }

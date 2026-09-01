@@ -1,5 +1,14 @@
 export type LauncherToolId =
-  'barcode' | 'convert' | 'image-compress' | 'image-editor' | 'json' | 'ocr' | 'watermark';
+  | 'barcode'
+  | 'color'
+  | 'convert'
+  | 'crypto'
+  | 'image-compress'
+  | 'image-editor'
+  | 'json'
+  | 'metadata'
+  | 'ocr'
+  | 'watermark';
 
 export type LauncherAction =
   | { readonly type: 'open-settings' }
@@ -65,6 +74,24 @@ const TOOLS: readonly Omit<LauncherMatch, 'action'>[] = [
     title: 'watermark.title',
     description: 'watermark.launcherDescription',
     keywords: ['watermark', 'wm', 'image-watermark', 'watermarker', '图片水印', '圖片浮水印'],
+  },
+  {
+    id: 'crypto',
+    title: 'crypto.title',
+    description: 'crypto.launcherDescription',
+    keywords: ['crypto', 'encrypt', 'decrypt', 'cipher', 'aes', '加密', '解密', '加密解密'],
+  },
+  {
+    id: 'metadata',
+    title: 'metadata.title',
+    description: 'metadata.launcherDescription',
+    keywords: ['exif', 'metadata', 'mediainfo', 'exiftool', '元数据', '媒體資訊'],
+  },
+  {
+    id: 'color',
+    title: 'color.title',
+    description: 'color.launcherDescription',
+    keywords: ['color', 'colour', 'picker', 'eyedropper', '取色', '颜色', '顏色'],
   },
   {
     id: 'settings',

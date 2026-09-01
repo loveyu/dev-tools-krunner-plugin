@@ -76,6 +76,27 @@ PHP Serialize、PHP VarExport 和 PHP Array 通过 Rust IPC 调用本机 PHP CLI
 
 图片压缩、图片编辑和图片水印页底部均保留打开对应原项目的入口。
 
+## 文本加解密
+
+在 KRunner 或独立启动器输入 `crypto`、`encrypt`、`decrypt`、`cipher` 或 `aes` 可打开纯前端文本加解密页。功能范围参考 [IT Tools](https://github.com/CorentinTh/it-tools)，本项目独立实现两个互不影响的加密/解密工作区，支持 AES、TripleDES、Rabbit 与 RC4 的 CryptoJS/OpenSSL 口令格式；密钥与正文不会离开 WebView，页面底部保留原项目入口。
+
+CryptoJS 已停止维护，其口令格式也不提供密文认证；TripleDES、Rabbit 与 RC4 只用于兼容旧数据，不建议用于新数据或高敏感场景。页面会持续显示此限制，不把兼容性工具包装成现代安全方案。
+
+## 图片与视频元数据
+
+输入 `exif`、`metadata` 或 `mediainfo` 可打开媒体元数据查看器。选择的任何文件路径（包括图片、MP4/MOV、MKV/WebM、AVI、MPEG-TS 等视频）都会直接交给设置中选定的 Rust 后端，不经剪贴板，也不会把视频读入 WebView：
+
+- 内置模式（默认）：编译进 Worker 的 `revelo` 默认 BSD-2-Clause 构建，以内存映射读取路径，不需要系统命令，支持媒体容器/编解码信息及常见 EXIF/IPTC/XMP。
+- 外部模式：受限调用 PATH 中的 `exiftool`，使用固定 JSON 参数、无 shell、30 秒超时与 16 MiB 输出上限，可读取更完整的格式和厂商标签；未安装时设置项不可选。
+
+页面按元数据分组展示并支持搜索、复制字段及导出为 JSON。内置构建没有启用 `revelo` 的 `exiftool-tables` 特性，因此不会把 GPL/Artistic 的 ExifTool 深度标签表编入二进制。页面底部保留 ExifTool 与 revelo 项目入口。
+
+## 颜色选择器
+
+输入 `color`、`colour`、`picker` 或 `eyedropper` 可打开颜色选择器。WebView 内提供固定 HSV 色板、HEX/RGB/HSL 转换和最近颜色历史；“屏幕取色”会暂时隐藏 WebView，再从任意已连接显示器选择像素，完成或取消后恢复原窗口。
+
+Linux Wayland/X11 使用 XDG Desktop Portal `PickColor`，由 KDE 门户负责多屏交互与授权；Windows 使用平台层读取全局桌面像素，单击确认、Esc 取消。相关实现只位于 `Platform` 层，应用和工具业务代码不包含操作系统条件分支。
+
 ## 独立启动器与原生快速输入
 
 `devtools-workerd --launcher` 可在没有 KRunner 的桌面环境或 Windows 中打开类 KRunner 工具启动器；Linux/KDE 即使安装了 KRunner 也可同时使用。启动器支持工具命令、中英文关键词检索，并会把直接输入的 JSON 对象/数组自动送入 JSON Workbench。
@@ -95,6 +116,7 @@ Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“�
 - 原生快速输入快捷键及输入框宽高（默认关闭）
 - 界面主题：跟随系统（默认）、浅色或深色
 - 界面语言：自动识别（默认）、简体中文、繁体中文或英语；WebView、Naive UI、图片编辑器和托盘菜单使用同一设置
+- 元数据后端：内置 revelo（默认）或系统外部 ExifTool
 
 隐藏托盘后仍可执行 `devtools-workerd --settings` 重新打开设置页。
 也可执行 `devtools-workerd --quick-input` 直接唤出原生快速输入框，便于脚本调用和故障恢复。
@@ -160,12 +182,14 @@ Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“�
 - `php`（可选；仅用于启用 PHP 格式转换）
 - `tesseract-ocr`、`tesseract-ocr-eng`、`tesseract-ocr-chi-sim`（可选；OCR）
 - `zbar-tools`（可选；条形码和二维码识别）
+- `libimage-exiftool-perl`（可选；用于启用外部 ExifTool 元数据后端）
 
 ## 安装
 
 ```bash
 sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev \
-  xdotool tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim zbar-tools
+  xdotool tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim zbar-tools \
+  libimage-exiftool-perl
 git clone <this-repo> krunner-plugin
 cd krunner-plugin
 ./install.sh
@@ -201,6 +225,9 @@ cargo build --release -p devtools-workerd
 - 输入 `compress` / `squoosh` / `image-compress` / `imgcompress` 打开纯前端图片压缩。
 - 输入 `editor` / `image-editor` / `edit-image` / `imageedit` / `imgedit` 打开纯前端图片编辑器。
 - 输入 `watermark` / `wm` / `image-watermark` 打开纯前端图片水印。
+- 输入 `crypto` / `encrypt` / `decrypt` 打开多算法文本加解密。
+- 输入 `exif` / `metadata` / `mediainfo` 查看图片或视频路径元数据。
+- 输入 `color` / `picker` / `eyedropper` 打开固定色板和跨屏幕取色。
 - 输入 `date` / `time` / `da` / `tim` 看时间格式，或 `ts` / `tms` / `unix` 取时间戳；也可以**直接粘贴时间戳或时间字符串**双向互转，回车复制。
 - 命令行触发（打开 KRunner 并只显示本 runner 结果）：
 
@@ -226,6 +253,9 @@ devtools-runner  (org.kde.devtools  @  /runner  :  org.kde.krunner1)
     ├─ Match("compress")        -> 打开纯前端图片压缩
     ├─ Match("editor")          -> 打开纯前端图片编辑器
     ├─ Match("watermark" / "wm") -> 打开纯前端图片水印
+    ├─ Match("crypto")          -> 打开纯前端多算法加解密
+    ├─ Match("exif")            -> 打开图片/视频元数据查看器
+    ├─ Match("color")           -> 打开固定色板与原生屏幕取色
     ├─ Run("json:inline:*" / "json:open")
     │       │  org.loveyu.DevTools.OpenTool("json", payload)
     │       ▼
@@ -247,7 +277,7 @@ devtools-runner  (org.kde.devtools  @  /runner  :  org.kde.krunner1)
     └─ Teardown()
 ```
 
-Worker 默认复用一个窗口和 WebView，关闭窗口只隐藏，进程与托盘继续运行。Web 静态资源构建为单个 `dist/index.html` 并编译进 Worker；Windows 通过进程内自定义协议提供给 WebView2，Linux 直接交给 WebKitGTK，两者都不启动 localhost 服务。原生快速输入使用独立 GTK/Win32 窗口，不加载 WebView。系统剪贴板、配置和自启动文件均由 Rust IPC 控制；图片压缩、编辑与水印直接在前端完成，不经过媒体处理 IPC。
+Worker 默认复用一个窗口和 WebView，关闭窗口只隐藏，进程与托盘继续运行。Web 静态资源构建为单个 `dist/index.html` 并编译进 Worker；Windows 通过进程内自定义协议提供给 WebView2，Linux 直接交给 WebKitGTK，两者都不启动 localhost 服务。原生快速输入使用独立 GTK/Win32 窗口，不加载 WebView。系统剪贴板、配置和自启动文件均由 Rust IPC 控制；图片压缩、编辑、水印与文本加解密直接在前端完成。元数据路径由独立 Rust 线程交给内置 revelo 或受限 ExifTool；屏幕取色会隐藏 WebView 并委托平台层完成。
 
 Worker 的业务层不包含 `target_os` 条件分支，也不直接引用 WebKitGTK 或 WebView2。平台选择只发生在 `platform/mod.rs`，具体 API 只存在于 `platform/linux.rs` 与 `platform/windows.rs`：
 
@@ -281,7 +311,7 @@ a(sssida{sv})
 | `src/main.rs` | Runner 主体：`org.kde.krunner1` 接口实现、调度分发 |
 | `src/json.rs` | JSON 查询、直接输入会话缓存与 Worker D-Bus 调用 |
 | `src/data_convert.rs` | `convert` / `cv` 查询与转换工作台调用 |
-| `src/media.rs` | OCR / 条码 / 图片压缩 / 图片编辑 / 图片水印 KRunner 触发词与 Worker 调用 |
+| `src/media.rs` | OCR / 条码 / 图片工具 / 加解密 / 元数据 / 颜色选择 KRunner 触发词与 Worker 调用 |
 | `src/clipboard.rs` | Klipper / Wayland / X11 的共享剪贴板读取 |
 | `src/time.rs` | 日期时间查询逻辑（COMMANDS / ITEMS / value_of 等） |
 | `src/rand.rs` | 随机字符串生成（RandMode / parse_rand_query 等） |
@@ -291,6 +321,8 @@ a(sssida{sv})
 | `crates/devtools-workerd/src/window_manager.rs` | 协调 WebView 工作区与非 WebView 原生快速输入窗口 |
 | `crates/devtools-workerd/src/webview_manager.rs` | 平台无关的页面路由、状态同步与前端事件分发 |
 | `crates/devtools-workerd/src/ipc.rs` | WebView JSON 协议与工具请求到应用事件的映射 |
+| `crates/devtools-workerd/src/metadata_processor.rs` | 内置 revelo 与受限外部 ExifTool 路径解析线程 |
+| `crates/devtools-workerd/src/color_picker.rs` | 跨平台屏幕取色结果模型 |
 | `crates/devtools-workerd/src/platform/` | Linux GTK/WebKitGTK 与 Windows Win32/WebView2 的全部平台实现 |
 | `web/devtools-ui` | Vue 3 + TypeScript + Naive UI + SCSS 工作台 |
 | `assets/org.kde.devtools.desktop` | KRunner DBus-runner 元数据（`X-Plasma-API=DBus2` 等） |
@@ -311,10 +343,14 @@ a(sssida{sv})
 | [Wry](https://github.com/tauri-apps/wry)、[Tao](https://github.com/tauri-apps/tao)、[tray-icon](https://github.com/tauri-apps/tray-icon)、[global-hotkey](https://github.com/tauri-apps/global-hotkey) | WebView、窗口、托盘与全局快捷键 | 直接引入 Rust crates，平台细节封装在 `Platform` 层 | Apache-2.0 / MIT，以各 crate 声明为准 |
 | [Squoosh](https://github.com/GoogleChromeLabs/squoosh) | 图片压缩交互参考 | 未复制或引入其源码；本项目使用 Canvas 独立实现 | Apache-2.0（原项目） |
 | [TransparentLC/watermarker](https://github.com/TransparentLC/watermarker) | 图片水印能力与交互参考 | 未复制或引入其源码；本项目使用 Canvas/TypeScript 独立实现 | AGPL-3.0（原项目） |
+| [IT Tools](https://github.com/CorentinTh/it-tools) | 多算法加解密功能与交互参考 | 未复制或引入其源码；本项目独立实现，页面保留原项目入口 | GPL-3.0（原项目） |
+| [CryptoJS](https://github.com/brix/crypto-js) | AES / TripleDES / Rabbit / RC4 兼容格式 | 直接引入 `crypto-js`；项目已停止维护，UI 明确提示风险 | MIT |
+| [revelo](https://github.com/vbasky/revelo) | 编译内置的图片/视频元数据解析 | 直接引入默认特性集之外的 `mmap`；未启用 `exiftool-tables` | BSD-2-Clause |
+| [ExifTool](https://exiftool.org/) | 可选外部完整元数据读取 | 仅运行用户系统中的命令，不链接或打包；页面保留项目入口 | Artistic-1.0 / GPL-1.0-or-later |
 
 数据转换、OCR 与条码识别的功能范围和交互迁移自内部 `tools-console` 项目，其中数据转换参考路径为 `/data/code/private/tools-console/src/views/helper/data-convert`。本项目没有照搬旧后端：浏览器可完成的转换已用 TypeScript 重新实现；OCR、条码识别和可选 PHP 格式通过受限 Rust 子进程桥接；依赖后端且非必要、存在已知问题或本机缺少对应程序的逻辑没有迁移。
 
-图片压缩、图片编辑和图片水印页面底部均提供原项目入口。Tesseract OCR、ZBar、PHP CLI、`xdotool` 等属于用户环境中的可选外部程序，Worker 仅以受限子进程调用，不把它们的代码链接或打包进本项目。
+图片压缩、图片编辑、图片水印、加解密和元数据页面底部均提供对应原项目入口。Tesseract OCR、ZBar、ExifTool、PHP CLI、`xdotool` 等属于用户环境中的可选外部程序，Worker 仅以受限子进程调用，不把它们的代码链接或打包进本项目。
 
 ## 开发与调试
 

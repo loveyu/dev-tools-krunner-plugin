@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use ashpd::desktop::remote_desktop::{DeviceType, KeyState, RemoteDesktop, SelectDevicesOptions};
-use ashpd::desktop::{PersistMode, Session};
+use ashpd::desktop::{Color, PersistMode, Session};
 use devtools_core::{
     LanguageMode, Settings, WORKER_INTERFACE, WORKER_OBJECT_PATH, WORKER_SERVICE_NAME,
 };
@@ -25,6 +25,7 @@ use zbus::blocking::{Connection, ConnectionBuilder, Proxy};
 
 use crate::ipc::tool_event;
 use crate::registry::ToolRegistry;
+use crate::ColorPickResult;
 use crate::UserEvent;
 
 pub fn configure_webview<'a>(
@@ -48,6 +49,46 @@ pub fn copy_text(text: &str) {
     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
     clipboard.set_text(text);
     clipboard.store();
+}
+
+pub fn pick_metadata_path() -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Choose an image, video, or media file")
+        .pick_file()
+}
+
+/// KDE Wayland 与 X11 都通过 Screenshot Portal 的 PickColor 进入跨屏幕取色模式。
+pub fn start_screen_color_picker(request_id: String, proxy: EventLoopProxy<UserEvent>) {
+    thread::spawn(move || {
+        let result = tokio::runtime::Runtime::new()
+            .map_err(|error| error.to_string())
+            .and_then(|runtime| {
+                runtime.block_on(async {
+                    let request = Color::pick()
+                        .send()
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    match request.response() {
+                        Ok(color) => Ok(ColorPickResult::success(
+                            request_id.clone(),
+                            normalized_channel(color.red()),
+                            normalized_channel(color.green()),
+                            normalized_channel(color.blue()),
+                        )),
+                        Err(ashpd::Error::Response(ashpd::desktop::ResponseError::Cancelled)) => {
+                            Ok(ColorPickResult::cancelled(request_id.clone()))
+                        }
+                        Err(error) => Err(error.to_string()),
+                    }
+                })
+            })
+            .unwrap_or_else(|error| ColorPickResult::error(request_id, error));
+        let _ = proxy.send_event(UserEvent::ColorPickingFinished(result));
+    });
+}
+
+fn normalized_channel(value: f64) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 pub fn ensure_display_available() -> Result<(), &'static str> {
@@ -680,5 +721,12 @@ mod tests {
             quote_desktop_exec(executable),
             "\"/tmp/a\\\\b\\\"\\$\\`/worker\""
         );
+    }
+
+    #[test]
+    fn normalizes_portal_color_channels() {
+        assert_eq!(normalized_channel(-1.0), 0);
+        assert_eq!(normalized_channel(0.5), 128);
+        assert_eq!(normalized_channel(2.0), 255);
     }
 }
