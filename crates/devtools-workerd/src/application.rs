@@ -21,10 +21,7 @@ use crate::window_manager::WindowManager;
 pub enum UserEvent {
     OpenLauncher,
     OpenQuickInput,
-    QuickInputSubmitted {
-        text: String,
-        target_window: Option<String>,
-    },
+    QuickInputSubmitted { text: String },
     OpenJson(String),
     OpenConvert(String),
     OpenOcr,
@@ -65,7 +62,9 @@ impl Application {
         }
 
         platform::ensure_display_available()?;
-        let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+        let mut event_loop_builder = EventLoopBuilder::<UserEvent>::with_user_event();
+        platform::configure_event_loop(&mut event_loop_builder);
+        let event_loop = event_loop_builder.build();
         let proxy = event_loop.create_proxy();
         let store = SettingsStore::from_environment()?;
         let mut current_settings = store.load();
@@ -125,17 +124,13 @@ impl Application {
                 Event::UserEvent(UserEvent::OpenQuickInput) => {
                     windows.open_quick_input(&current_settings)
                 }
-                Event::UserEvent(UserEvent::QuickInputSubmitted {
-                    text,
-                    target_window,
-                }) => {
+                Event::UserEvent(UserEvent::QuickInputSubmitted { text }) => {
                     eprintln!("devtools-workerd: native quick input submitted");
                     if let Err(error) = history_store.append(&text) {
                         eprintln!("devtools-workerd: failed to save quick input history: {error}");
                     }
-                    if let Err(error) = windows.submit_quick_input(&text, target_window.as_deref())
-                    {
-                        eprintln!("devtools-workerd: failed to inject quick input: {error}");
+                    if let Err(error) = windows.copy_to_clipboard(&text) {
+                        eprintln!("devtools-workerd: failed to copy quick input: {error}");
                     }
                 }
                 Event::UserEvent(UserEvent::OpenJson(payload)) => windows.open_json(&payload),
@@ -156,7 +151,11 @@ impl Application {
                         Ok(WebRequest::FrontendReady) => {
                             webview_ready.store(true, Ordering::Release);
                         }
-                        Ok(WebRequest::ClipboardWrite { text }) => windows.copy_to_clipboard(&text),
+                        Ok(WebRequest::ClipboardWrite { text }) => {
+                            if let Err(error) = windows.copy_to_clipboard(&text) {
+                                eprintln!("devtools-workerd: failed to copy webview text: {error}");
+                            }
+                        }
                         Ok(WebRequest::NativeConvert {
                             request_id,
                             format,

@@ -281,8 +281,8 @@ impl WebViewManager {
         self.show();
     }
 
-    pub fn copy_to_clipboard(&self, text: &str) {
-        platform::copy_text(text);
+    pub fn copy_to_clipboard(&self, text: &str) -> Result<(), String> {
+        platform::copy_text(text)
     }
 
     pub fn open_launcher(&self) {

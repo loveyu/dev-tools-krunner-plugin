@@ -4,7 +4,7 @@ use tao::event_loop::{EventLoop, EventLoopProxy};
 use crate::media_processor::{MediaCapabilities, MediaProcessingResult};
 use crate::metadata_processor::{MetadataCapabilities, MetadataProcessingResult};
 use crate::native_converter::{ConverterCapabilities, NativeConversionResult};
-use crate::platform::{QuickInputInjector, QuickInputWindow};
+use crate::platform::QuickInputWindow;
 use crate::webview_manager::WebViewManager;
 use crate::UserEvent;
 
@@ -12,7 +12,6 @@ use crate::UserEvent;
 pub struct WindowManager {
     webview: WebViewManager,
     quick_input: QuickInputWindow,
-    quick_input_injector: QuickInputInjector,
 }
 
 impl WindowManager {
@@ -35,7 +34,6 @@ impl WindowManager {
                 metadata_capabilities,
             )?,
             quick_input: QuickInputWindow::new(proxy, quick_input_history)?,
-            quick_input_injector: QuickInputInjector::new(),
         })
     }
 
@@ -49,14 +47,6 @@ impl WindowManager {
 
     pub fn open_quick_input(&self, settings: &Settings) {
         self.quick_input.show(settings);
-    }
-
-    pub fn submit_quick_input(
-        &self,
-        text: &str,
-        target_window: Option<&str>,
-    ) -> Result<(), String> {
-        self.quick_input_injector.inject(text, target_window)
     }
 
     pub fn open_json(&self, payload: &str) {
@@ -107,8 +97,8 @@ impl WindowManager {
         self.webview.send_settings(settings, error);
     }
 
-    pub fn copy_to_clipboard(&self, text: &str) {
-        self.webview.copy_to_clipboard(text);
+    pub fn copy_to_clipboard(&self, text: &str) -> Result<(), String> {
+        self.webview.copy_to_clipboard(text)
     }
 
     pub fn send_native_conversion_result(&self, result: &NativeConversionResult) {

@@ -53,7 +53,9 @@ jobs:
           cp target/release/devtools-workerd dist/
           cp assets/org.kde.devtools.desktop dist/assets/
           cp assets/org.kde.devtools.service dist/assets/
+          cp assets/org.loveyu.DevTools.desktop.in dist/assets/
           cp assets/org.loveyu.DevTools.service dist/assets/
+          cp assets/org.loveyu.DevTools.svg dist/assets/
           cp install.sh dist/
           tar -C dist -czf devtools-runner-x86_64-linux-gnu.tar.gz .
       - name: Upload to release

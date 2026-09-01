@@ -19,7 +19,9 @@ describe('crypto workbench', () => {
   it('rejects empty values and marks legacy ciphers', () => {
     expect(() => encryptText('AES', '', 'secret')).toThrow('Input must not be empty');
     expect(() => encryptText('AES', 'value', '')).toThrow('Passphrase must not be empty');
-    expect(() => decryptText('AES', 'not-valid', 'secret')).not.toThrow();
+    expect(() => decryptText('AES', 'not-valid', 'secret')).toThrow(
+      'Ciphertext must be OpenSSL salted Base64',
+    );
     expect(isLegacyCipher('AES')).toBe(false);
     expect(isLegacyCipher('TripleDES')).toBe(true);
     expect(isLegacyCipher('Rabbit')).toBe(true);
@@ -28,17 +30,16 @@ describe('crypto workbench', () => {
   });
 
   it('preserves cipher failures as error causes', () => {
+    const ciphertext = encryptText('AES', 'value', 'secret');
     vi.spyOn(CryptoJS.AES, 'decrypt').mockImplementationOnce(() => {
       throw new Error('broken cipher');
     });
-    expect(() => decryptText('AES', 'ciphertext', 'secret')).toThrow('broken cipher');
+    expect(() => decryptText('AES', ciphertext, 'secret')).toThrow('broken cipher');
 
     vi.spyOn(CryptoJS.AES, 'decrypt').mockImplementationOnce(() => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- 覆盖第三方库抛出非 Error 值的防御分支。
       throw 'broken value';
     });
-    expect(() => decryptText('AES', 'ciphertext', 'secret')).toThrow(
-      'Unable to decrypt ciphertext',
-    );
+    expect(() => decryptText('AES', ciphertext, 'secret')).toThrow('Unable to decrypt ciphertext');
   });
 });

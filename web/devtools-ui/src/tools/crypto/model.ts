@@ -21,8 +21,14 @@ export function decryptText(
   passphrase: string,
 ): string {
   validateInputs(ciphertext, passphrase);
+  const normalizedCiphertext = ciphertext.trim();
+  if (!normalizedCiphertext.startsWith('U2FsdGVkX1')) {
+    throw new Error('Ciphertext must be OpenSSL salted Base64');
+  }
   try {
-    return cipherFor(algorithm).decrypt(ciphertext, passphrase).toString(CryptoJS.enc.Utf8);
+    return cipherFor(algorithm)
+      .decrypt(normalizedCiphertext, passphrase)
+      .toString(CryptoJS.enc.Utf8);
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : 'Unable to decrypt ciphertext', {
       cause: error,

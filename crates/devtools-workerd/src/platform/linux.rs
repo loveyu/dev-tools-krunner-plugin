@@ -7,11 +7,9 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::time::Duration;
 
 use ashpd::desktop::global_shortcuts::{BindShortcutsOptions, GlobalShortcuts, NewShortcut};
-use ashpd::desktop::remote_desktop::{DeviceType, KeyState, RemoteDesktop, SelectDevicesOptions};
-use ashpd::desktop::{Color, CreateSessionOptions, PersistMode, Session};
+use ashpd::desktop::{Color, CreateSessionOptions, Session};
 use ashpd::AppID;
 use devtools_core::{
     LanguageMode, Settings, WORKER_INTERFACE, WORKER_OBJECT_PATH, WORKER_SERVICE_NAME,
@@ -19,12 +17,12 @@ use devtools_core::{
 use futures::StreamExt;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-use gtk::gdk;
 use gtk::prelude::*;
+use gtk::{gdk, pango};
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;
-use tao::event_loop::EventLoopProxy;
-use tao::platform::unix::WindowExtUnix;
+use tao::event_loop::{EventLoopBuilder, EventLoopProxy};
+use tao::platform::unix::{EventLoopBuilderExtUnix, WindowExtUnix};
 use tao::window::Window;
 use tokio::sync::mpsc as tokio_mpsc;
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix};
@@ -57,10 +55,16 @@ pub fn build_webview(
     Ok(builder.build_gtk(container)?)
 }
 
-pub fn copy_text(text: &str) {
+pub fn configure_event_loop(builder: &mut EventLoopBuilder<UserEvent>) {
+    // 与 Worker 的 zbus 服务名分离，避免两个总线连接争抢同一个 well-known name。
+    builder.with_app_id("org.loveyu.DevTools.Application");
+}
+
+pub fn copy_text(text: &str) -> Result<(), String> {
     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
     clipboard.set_text(text);
     clipboard.store();
+    Ok(())
 }
 
 pub fn pick_metadata_path() -> Option<PathBuf> {
@@ -565,7 +569,7 @@ pub fn autostart_entry(executable: &Path) -> String {
          Name=DevTools Worker\n\
          Comment=DevTools JSON Workbench GUI worker\n\
          Exec={executable}\n\
-         Icon=applications-development\n\
+         Icon=org.loveyu.DevTools\n\
          Terminal=false\n\
          NoDisplay=true\n\
          OnlyShowIn=KDE;\n\
@@ -589,7 +593,6 @@ pub struct QuickInputWindow {
     entry: gtk::Entry,
     history: Rc<RefCell<Vec<String>>>,
     history_cursor: Rc<Cell<usize>>,
-    target_window: Rc<RefCell<Option<String>>>,
 }
 
 impl QuickInputWindow {
@@ -609,22 +612,25 @@ impl QuickInputWindow {
         window.set_position(gtk::WindowPosition::Mouse);
 
         let entry = gtk::Entry::new();
+        // GtkEntry 默认会根据当前文本自动计算自然宽度。固定其尺寸请求后再用 hexpand
+        // 填满窗口，可避免输入法预编辑或长文本变化触发顶层窗口重复布局。
+        entry.set_width_chars(1);
+        entry.set_max_width_chars(1);
         entry.set_hexpand(true);
         entry.set_vexpand(true);
         entry.set_margin_top(8);
         entry.set_margin_bottom(8);
         entry.set_margin_start(12);
         entry.set_margin_end(12);
+        configure_preedit_style(&entry);
         window.add(&entry);
 
         let history = Rc::new(RefCell::new(initial_history));
         let history_cursor = Rc::new(Cell::new(history.borrow().len()));
-        let target_window = Rc::new(RefCell::new(None));
 
         let activate_window = window.clone();
         let activate_history = Rc::clone(&history);
         let activate_cursor = Rc::clone(&history_cursor);
-        let activate_target = Rc::clone(&target_window);
         let activate_proxy = proxy;
         entry.connect_activate(move |entry| {
             let text = entry.text().to_string();
@@ -635,10 +641,7 @@ impl QuickInputWindow {
             }
             activate_history.borrow_mut().push(text.clone());
             activate_cursor.set(activate_history.borrow().len());
-            let _ = activate_proxy.send_event(UserEvent::QuickInputSubmitted {
-                text,
-                target_window: activate_target.borrow_mut().take(),
-            });
+            let _ = activate_proxy.send_event(UserEvent::QuickInputSubmitted { text });
         });
 
         let key_window = window.clone();
@@ -673,12 +676,15 @@ impl QuickInputWindow {
             entry,
             history,
             history_cursor,
-            target_window,
         })
     }
 
     pub fn show(&self, settings: &Settings) {
-        *self.target_window.borrow_mut() = capture_x11_target();
+        if self.window.is_visible() {
+            self.window.present();
+            self.entry.grab_focus();
+            return;
+        }
         let (width, height, position) = bounded_geometry(settings);
         self.window.set_default_size(width, height);
         self.window.set_size_request(width, height);
@@ -698,26 +704,83 @@ impl QuickInputWindow {
     }
 }
 
-pub struct QuickInputInjector {
-    portal_sender: Option<mpsc::Sender<String>>,
+const PREEDIT_BACKGROUND_ALPHA: u16 = 0x3800;
+
+/// 输入法预编辑只使用背景色标记，字体、字号、升降和下划线均继承输入框本身。
+fn configure_preedit_style(entry: &gtk::Entry) {
+    entry.connect_local("preedit-changed", true, |values| {
+        if let (Ok(entry), Ok(preedit)) = (values[0].get::<gtk::Entry>(), values[1].get::<String>())
+        {
+            apply_preedit_style(&entry, &preedit);
+        }
+        None
+    });
 }
 
-impl QuickInputInjector {
-    pub fn new() -> Self {
-        let portal_sender = is_wayland().then(spawn_portal_typer);
-        Self { portal_sender }
+fn apply_preedit_style(entry: &gtk::Entry, preedit: &str) {
+    if preedit.is_empty() {
+        return;
     }
 
-    pub fn inject(&self, text: &str, target_window: Option<&str>) -> Result<(), String> {
-        if let Some(target) = target_window {
-            return xdotool_type(target, text);
-        }
-        self.portal_sender
-            .as_ref()
-            .ok_or_else(|| "no cross-application input backend is available".to_owned())?
-            .send(text.to_owned())
-            .map_err(|error| error.to_string())
-    }
+    let text = entry.text();
+    let cursor = entry.position().max(0) as usize;
+    let text_index = byte_index_at_char(&text, cursor);
+    let start = entry.text_index_to_layout_index(text_index as i32).max(0) as u32;
+    let end = start.saturating_add(preedit.len() as u32);
+    let Some(layout) = entry.layout() else {
+        return;
+    };
+    let attributes = layout
+        .attributes()
+        .and_then(|attributes| attributes.copy())
+        .unwrap_or_default();
+
+    // GtkEntry 会把输入法提供的属性拼入预编辑区间；移除该区间内的全部 IME
+    // 属性，防止下划线、字体或 rise 等属性改变布局高度。跨越整个文本的主题属性
+    // 不在此移除，因此普通文本继续完整跟随系统主题。
+    let _ = attributes.filter(|attribute| {
+        preedit_contains_attribute(start, end, attribute.start_index(), attribute.end_index())
+    });
+
+    let color = preedit_background(entry);
+    let mut background = pango::AttrColor::new_background(
+        pango_color_channel(color.red()),
+        pango_color_channel(color.green()),
+        pango_color_channel(color.blue()),
+    );
+    background.set_start_index(start);
+    background.set_end_index(end);
+    attributes.change(background);
+
+    let mut alpha = pango::AttrInt::new_background_alpha(PREEDIT_BACKGROUND_ALPHA);
+    alpha.set_start_index(start);
+    alpha.set_end_index(end);
+    attributes.change(alpha);
+
+    layout.set_attributes(Some(&attributes));
+    entry.queue_draw();
+}
+
+fn byte_index_at_char(text: &str, char_index: usize) -> usize {
+    text.char_indices()
+        .nth(char_index)
+        .map_or(text.len(), |(index, _)| index)
+}
+
+fn preedit_contains_attribute(start: u32, end: u32, attr_start: u32, attr_end: u32) -> bool {
+    attr_start >= start && attr_end <= end
+}
+
+fn preedit_background(entry: &gtk::Entry) -> gdk::RGBA {
+    let context = entry.style_context();
+    context
+        .lookup_color("theme_selected_bg_color")
+        .or_else(|| context.lookup_color("accent_bg_color"))
+        .unwrap_or_else(|| gdk::RGBA::new(0.20, 0.48, 0.82, 1.0))
+}
+
+fn pango_color_channel(value: f64) -> u16 {
+    (value.clamp(0.0, 1.0) * f64::from(u16::MAX)).round() as u16
 }
 
 fn bounded_geometry(settings: &Settings) -> (i32, i32, Option<(i32, i32)>) {
@@ -748,41 +811,6 @@ fn bounded_geometry(settings: &Settings) -> (i32, i32, Option<(i32, i32)>) {
     (width, height, Some((x, y)))
 }
 
-fn capture_x11_target() -> Option<String> {
-    if is_wayland() {
-        return None;
-    }
-    let output = Command::new("xdotool")
-        .arg("getactivewindow")
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-fn xdotool_type(target: &str, text: &str) -> Result<(), String> {
-    let status = Command::new("xdotool")
-        .args([
-            "windowactivate",
-            "--sync",
-            target,
-            "type",
-            "--clearmodifiers",
-            "--delay",
-            "0",
-            "--",
-        ])
-        .arg(text)
-        .status()
-        .map_err(|error| format!("failed to start xdotool: {error}"))?;
-    status
-        .success()
-        .then_some(())
-        .ok_or_else(|| format!("xdotool exited with {status}"))
-}
-
 fn is_wayland() -> bool {
     env_var_present("WAYLAND_DISPLAY")
         && std::env::var("GDK_BACKEND").map_or(true, |value| value != "x11")
@@ -790,94 +818,6 @@ fn is_wayland() -> bool {
 
 fn env_var_present(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
-}
-
-fn spawn_portal_typer() -> mpsc::Sender<String> {
-    let (sender, receiver) = mpsc::channel::<String>();
-    thread::spawn(move || {
-        let runtime = match tokio::runtime::Runtime::new() {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                eprintln!("devtools-workerd: failed to start portal runtime: {error}");
-                return;
-            }
-        };
-        let mut session = None;
-        while let Ok(text) = receiver.recv() {
-            let result = runtime.block_on(async {
-                if session.is_none() {
-                    session = Some(create_portal_session().await?);
-                }
-                // Portal 首次授权也可能切走焦点；授权完成后再等待原窗口重新获得焦点。
-                tokio::time::sleep(Duration::from_millis(300)).await;
-                portal_type_text(session.as_ref().expect("session was initialized"), &text).await
-            });
-            if let Err(error) = result {
-                session = None;
-                eprintln!("devtools-workerd: Wayland quick input failed: {error}");
-            }
-        }
-    });
-    sender
-}
-
-struct PortalSession {
-    proxy: RemoteDesktop,
-    session: Session<RemoteDesktop>,
-}
-
-async fn create_portal_session() -> Result<PortalSession, String> {
-    let proxy = RemoteDesktop::new()
-        .await
-        .map_err(|error| error.to_string())?;
-    let session = proxy
-        .create_session(Default::default())
-        .await
-        .map_err(|error| error.to_string())?;
-    proxy
-        .select_devices(
-            &session,
-            SelectDevicesOptions::default()
-                .set_devices(Some(DeviceType::Keyboard.into()))
-                .set_persist_mode(PersistMode::ExplicitlyRevoked),
-        )
-        .await
-        .map_err(|error| error.to_string())?
-        .response()
-        .map_err(|error| error.to_string())?;
-    proxy
-        .start(&session, None, Default::default())
-        .await
-        .map_err(|error| error.to_string())?
-        .response()
-        .map_err(|error| error.to_string())?;
-    Ok(PortalSession { proxy, session })
-}
-
-async fn portal_type_text(session: &PortalSession, text: &str) -> Result<(), String> {
-    for character in text.chars() {
-        let keysym = character_to_keysym(character);
-        for state in [KeyState::Pressed, KeyState::Released] {
-            session
-                .proxy
-                .notify_keyboard_keysym(&session.session, keysym, state, Default::default())
-                .await
-                .map_err(|error| error.to_string())?;
-        }
-        // Portal/合成器处理输入是异步的，轻微节流可避免字符丢失或到达顺序变化。
-        tokio::time::sleep(Duration::from_millis(4)).await;
-    }
-    Ok(())
-}
-
-fn character_to_keysym(character: char) -> i32 {
-    match character {
-        '\n' | '\r' => 0xff0d,
-        '\t' => 0xff09,
-        '\u{8}' => 0xff08,
-        value if value as u32 <= 0xff => value as i32,
-        value => (0x0100_0000 | value as u32) as i32,
-    }
 }
 
 /// KDE StatusNotifierItem 托盘实现，菜单动作只投递给应用主线程。
@@ -896,7 +836,7 @@ impl ksni::Tray for DevToolsTray {
     }
 
     fn icon_name(&self) -> String {
-        "applications-development".to_owned()
+        "org.loveyu.DevTools".to_owned()
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
@@ -1005,10 +945,10 @@ fn language_from_environment(mut value_of: impl FnMut(&str) -> Option<String>) -
 
 fn placeholder(language: LanguageMode) -> &'static str {
     match resolve_language(language) {
-        LanguageMode::SimplifiedChinese => "输入内容，Enter 回填，↑↓ 历史",
-        LanguageMode::TraditionalChinese => "輸入內容，Enter 回填，↑↓ 歷史",
+        LanguageMode::SimplifiedChinese => "输入内容，Enter 复制并关闭，↑↓ 历史",
+        LanguageMode::TraditionalChinese => "輸入內容，Enter 複製並關閉，↑↓ 歷史",
         LanguageMode::System | LanguageMode::English => {
-            "Type text, Enter to insert, ↑↓ for history"
+            "Type text, Enter to copy and close, ↑↓ for history"
         }
     }
 }
@@ -1179,13 +1119,10 @@ mod tests {
     }
 
     #[test]
-    fn maps_text_characters_to_portal_keysyms() {
-        assert_eq!(character_to_keysym('a'), 0x0061);
-        assert_eq!(character_to_keysym('A'), 0x0041);
-        assert_eq!(character_to_keysym('é'), 0x00e9);
-        assert_eq!(character_to_keysym('\n'), 0xff0d);
-        assert_eq!(character_to_keysym('\t'), 0xff09);
-        assert_eq!(character_to_keysym('中'), 0x0100_0000 | '中' as i32);
+    fn describes_clipboard_only_quick_input_action() {
+        assert!(placeholder(LanguageMode::SimplifiedChinese).contains("复制并关闭"));
+        assert!(placeholder(LanguageMode::TraditionalChinese).contains("複製並關閉"));
+        assert!(placeholder(LanguageMode::English).contains("copy and close"));
     }
 
     #[test]
@@ -1215,5 +1152,30 @@ mod tests {
         assert_eq!(normalized_channel(-1.0), 0);
         assert_eq!(normalized_channel(0.5), 128);
         assert_eq!(normalized_channel(2.0), 255);
+    }
+
+    #[test]
+    fn converts_character_cursor_to_utf8_byte_index() {
+        assert_eq!(byte_index_at_char("a中文", 0), 0);
+        assert_eq!(byte_index_at_char("a中文", 1), 1);
+        assert_eq!(byte_index_at_char("a中文", 2), 4);
+        assert_eq!(byte_index_at_char("a中文", 3), 7);
+        assert_eq!(byte_index_at_char("a中文", 99), 7);
+    }
+
+    #[test]
+    fn removes_only_attributes_owned_by_preedit_range() {
+        assert!(preedit_contains_attribute(3, 8, 3, 8));
+        assert!(preedit_contains_attribute(3, 8, 4, 7));
+        assert!(!preedit_contains_attribute(3, 8, 0, u32::MAX));
+        assert!(!preedit_contains_attribute(3, 8, 2, 5));
+        assert!(!preedit_contains_attribute(3, 8, 7, 9));
+    }
+
+    #[test]
+    fn converts_theme_colors_to_pango_channels() {
+        assert_eq!(pango_color_channel(-1.0), 0);
+        assert_eq!(pango_color_channel(0.5), 32_768);
+        assert_eq!(pango_color_channel(2.0), u16::MAX);
     }
 }

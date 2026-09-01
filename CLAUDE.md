@@ -82,8 +82,11 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 - Worker 另有可独立于 KRunner 使用的类 KRunner 启动器。启动器快捷键与原生快速输入快捷键均默认关闭；
   Linux Wayland 快捷键走 XDG GlobalShortcuts portal，X11/Windows 走平台注册接口。
 - 原生快速输入不是 WebView：Linux 使用 GTK Entry，Windows 使用 Win32 Edit。窗口按指针所在显示器工作区
-  裁剪尺寸和位置，Enter 后在原焦点应用回填；历史按 JSONL 写入用户数据目录。X11 回填依赖 `xdotool`，
-  KDE Wayland 回填通过 XDG RemoteDesktop portal 取得键盘权限，Windows 使用 `SendInput`。
+  裁剪尺寸和位置，Enter 后将内容复制到系统剪贴板并关闭，由用户手动粘贴；历史按 JSONL 写入用户数据目录。
+  不恢复原窗口焦点，也不使用 X11/Wayland/Windows 键盘注入能力。窗口已显示时再次唤出只聚焦并保留现有内容；
+  GTK Entry 的自然宽度必须固定，再通过 `hexpand` 填满窗口，避免输入法预编辑触发顶层窗口重复布局；
+  预编辑区间应移除输入法附加的字体、字号、升降和下划线等 Pango 属性，仅用主题背景色区分，使其文字度量
+  与普通输入保持一致。
 - WebView 单文件超过 WebView2 `NavigateToString` 限制，因此 Windows 使用 Wry 进程内自定义协议加载嵌入 HTML；
   Linux 仍直接使用 `with_html`。两者都不能启动 localhost 服务。
 - i18n 消息 key 必须是唯一的 ASCII 语义 key，不得使用中文原文；简中/繁中/英语消息表 key 必须完全一致。

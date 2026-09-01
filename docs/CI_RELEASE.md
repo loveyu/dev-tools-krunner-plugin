@@ -25,8 +25,12 @@ GitHub Actions 工作流 `.github/workflows/release.yml` 仅在 **GitHub Release
 每次构建产出 `devtools-runner-<target>.tar.gz`，内含：
 
 - `devtools-runner`（二进制）
+- `devtools-workerd`（Worker 二进制）
 - `org.kde.devtools.desktop`（KRunner 元数据）
 - `org.kde.devtools.service`（D-Bus 激活配置）
+- `org.loveyu.DevTools.desktop.in`（独立应用入口模板）
+- `org.loveyu.DevTools.service`（Worker D-Bus 激活配置）
+- `org.loveyu.DevTools.svg`（应用图标）
 - `install.sh`（安装脚本）
 
 产物通过 `gh release upload` 自动上传到对应 Release，覆盖已存在的同名文件（`--clobber`）。

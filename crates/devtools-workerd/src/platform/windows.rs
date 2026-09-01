@@ -12,7 +12,7 @@ use std::time::Duration;
 use devtools_core::{LanguageMode, Settings};
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
-use tao::event_loop::EventLoopProxy;
+use tao::event_loop::{EventLoopBuilder, EventLoopProxy};
 use tao::window::Window;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -24,17 +24,16 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_RETURN, VK_UP,
+    GetAsyncKeyState, SetFocus, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_RETURN, VK_UP,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor, GetCursorPos,
-    GetForegroundWindow, GetGUIThreadInfo, GetParent, GetWindowLongPtrW, GetWindowTextLengthW,
-    GetWindowTextW, MoveWindow, RegisterClassW, SendMessageW, SetForegroundWindow,
-    SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, CS_HREDRAW, CS_VREDRAW,
-    ES_AUTOHSCROLL, GA_ROOT, GUITHREADINFO, GWLP_USERDATA, GWLP_WNDPROC, HWND_TOPMOST,
-    SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WM_KEYDOWN, WM_NCDESTROY, WM_SIZE, WNDCLASSW, WNDPROC,
-    WS_BORDER, WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
+    CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetParent,
+    GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible, MoveWindow,
+    RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    SetWindowTextW, ShowWindow, CS_HREDRAW, CS_VREDRAW, ES_AUTOHSCROLL, GWLP_USERDATA,
+    GWLP_WNDPROC, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOW, WM_KEYDOWN, WM_NCDESTROY,
+    WM_SIZE, WNDCLASSW, WNDPROC, WS_BORDER, WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    WS_VISIBLE,
 };
 use wry::{WebView, WebViewBuilder};
 
@@ -67,10 +66,11 @@ pub fn build_webview(
     Ok(builder.build(window)?)
 }
 
-pub fn copy_text(text: &str) {
-    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-        let _ = clipboard.set_text(text);
-    }
+pub fn configure_event_loop(_builder: &mut EventLoopBuilder<UserEvent>) {}
+
+pub fn copy_text(text: &str) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+    clipboard.set_text(text).map_err(|error| error.to_string())
 }
 
 pub fn pick_metadata_path() -> Option<PathBuf> {
@@ -221,7 +221,6 @@ struct WindowState {
     proxy: EventLoopProxy<UserEvent>,
     history: Vec<String>,
     history_cursor: usize,
-    target: HWND,
 }
 
 /// Windows 原生快速输入窗口使用 Win32 Edit，不创建 WebView2。
@@ -295,7 +294,6 @@ impl QuickInputWindow {
                 proxy,
                 history_cursor: initial_history.len(),
                 history: initial_history,
-                target: null_mut(),
             }));
             SetWindowLongPtrW(parent, GWLP_USERDATA, state as isize);
             SetWindowLongPtrW(edit, GWLP_USERDATA, state as isize);
@@ -306,7 +304,11 @@ impl QuickInputWindow {
     pub fn show(&self, settings: &Settings) {
         unsafe {
             let state = &mut *self.state;
-            state.target = focused_target();
+            if IsWindowVisible(state.parent) != 0 {
+                SetForegroundWindow(state.parent);
+                SetFocus(state.edit);
+                return;
+            }
             state.history_cursor = state.history.len();
             SetWindowTextW(state.edit, wide("").as_ptr());
             let cue = wide(placeholder(settings.language));
@@ -338,28 +340,6 @@ impl Drop for QuickInputWindow {
                 self.state = null_mut();
             }
         }
-    }
-}
-
-pub struct QuickInputInjector;
-
-impl QuickInputInjector {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn inject(&self, text: &str, target_window: Option<&str>) -> Result<(), String> {
-        let target = target_window
-            .and_then(|value| value.parse::<usize>().ok())
-            .map(|value| value as HWND)
-            .filter(|target| !target.is_null())
-            .ok_or_else(|| "original window is unavailable".to_owned())?;
-        let root = unsafe { GetAncestor(target, GA_ROOT) };
-        unsafe {
-            SetForegroundWindow(if root.is_null() { target } else { root });
-        }
-        thread::sleep(Duration::from_millis(60));
-        send_unicode(text)
     }
 }
 
@@ -403,10 +383,9 @@ unsafe extern "system" fn edit_window_proc(
                 if !text.is_empty() {
                     state.history.push(text.clone());
                     state.history_cursor = state.history.len();
-                    let result = state.proxy.send_event(UserEvent::QuickInputSubmitted {
-                        text,
-                        target_window: Some((state.target as usize).to_string()),
-                    });
+                    let result = state
+                        .proxy
+                        .send_event(UserEvent::QuickInputSubmitted { text });
                     if result.is_err() {
                         eprintln!("devtools-workerd: failed to queue native quick input");
                     }
@@ -444,22 +423,6 @@ unsafe extern "system" fn edit_window_proc(
     CallWindowProcW(state.old_edit_proc, hwnd, message, wparam, lparam)
 }
 
-fn focused_target() -> HWND {
-    unsafe {
-        let mut information = GUITHREADINFO {
-            cbSize: size_of::<GUITHREADINFO>() as u32,
-            ..Default::default()
-        };
-        if GetGUIThreadInfo(0, &mut information) != 0 && !information.hwndFocus.is_null() {
-            information.hwndFocus
-        } else if !information.hwndActive.is_null() {
-            information.hwndActive
-        } else {
-            GetForegroundWindow()
-        }
-    }
-}
-
 fn bounded_geometry(settings: &Settings) -> (i32, i32, i32, i32) {
     unsafe {
         let mut cursor = POINT::default();
@@ -490,42 +453,6 @@ fn window_text(hwnd: HWND) -> String {
         let copied = GetWindowTextW(hwnd, value.as_mut_ptr(), value.len() as i32);
         String::from_utf16_lossy(&value[..copied as usize])
     }
-}
-
-fn send_unicode(text: &str) -> Result<(), String> {
-    let mut inputs = Vec::new();
-    for unit in text.encode_utf16() {
-        for flags in [KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP] {
-            let mut input = INPUT {
-                r#type: INPUT_KEYBOARD,
-                ..Default::default()
-            };
-            input.Anonymous.ki = KEYBDINPUT {
-                wVk: 0,
-                wScan: unit,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            inputs.push(input);
-        }
-    }
-    let sent = unsafe {
-        SendInput(
-            inputs.len() as u32,
-            inputs.as_ptr(),
-            size_of::<INPUT>() as i32,
-        )
-    };
-    let last_error = unsafe { GetLastError() };
-    (sent as usize == inputs.len())
-        .then_some(())
-        .ok_or_else(|| {
-            format!(
-                "SendInput sent {sent} of {} events (GetLastError={last_error})",
-                inputs.len()
-            )
-        })
 }
 
 fn wide(value: &str) -> Vec<u16> {
@@ -637,10 +564,10 @@ pub fn system_language() -> LanguageMode {
 
 fn placeholder(language: LanguageMode) -> &'static str {
     match resolve_language(language) {
-        LanguageMode::SimplifiedChinese => "输入内容，Enter 回填，↑↓ 历史",
-        LanguageMode::TraditionalChinese => "輸入內容，Enter 回填，↑↓ 歷史",
+        LanguageMode::SimplifiedChinese => "输入内容，Enter 复制并关闭，↑↓ 历史",
+        LanguageMode::TraditionalChinese => "輸入內容，Enter 複製並關閉，↑↓ 歷史",
         LanguageMode::System | LanguageMode::English => {
-            "Type text, Enter to insert, ↑↓ for history"
+            "Type text, Enter to copy and close, ↑↓ for history"
         }
     }
 }

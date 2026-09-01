@@ -104,9 +104,9 @@ Linux Wayland/X11 使用 XDG Desktop Portal `PickColor`，由 KDE 门户负责�
 设置中提供两个彼此独立、默认关闭的全局快捷键：
 
 - 工具启动器快捷键：唤出 WebView 工具搜索窗口，默认值为 `Ctrl+Alt+Space`。
-- 原生快速输入快捷键：唤出不使用 WebView 的轻量输入框，默认值为 `Ctrl+Alt+KeyI`。输入框自动聚焦并按指针所在显示器工作区裁剪位置和尺寸；`Enter` 将内容回填原应用，`↑` / `↓` 浏览本次和历史输入。
+- 原生快速输入快捷键：唤出不使用 WebView 的轻量输入框，默认值为 `Ctrl+Alt+KeyI`。输入框自动聚焦并按指针所在显示器工作区裁剪位置和尺寸；`Enter` 将内容复制到剪贴板并关闭窗口，`↑` / `↓` 浏览本次和历史输入，随后由用户在目标应用中手动粘贴。窗口已显示时重复触发快捷键只会重新聚焦，不会清空内容或重新计算几何。Linux 输入法预编辑文字不使用额外字体、字号、升降或下划线样式，仅以跟随系统主题的轻背景色标记，避免预编辑提交前后因文字度量变化而上下抖动。
 
-原生快速输入历史按 JSONL 追加保存：Linux 为 `$XDG_DATA_HOME/devtools/quick-input-history.jsonl`（默认 `~/.local/share/devtools/quick-input-history.jsonl`），Windows 为 `%LOCALAPPDATA%\devtools\quick-input-history.jsonl`。按下 `Enter` 后输入框先隐藏并归还焦点，再以键盘事件逐字符输入，不改写剪贴板：X11 使用 `xdotool` 回到原窗口；KDE Wayland 按系统安全模型通过 XDG RemoteDesktop 门户申请键盘注入权限，首次使用会出现授权界面；Windows 使用 Win32 `SendInput`。
+原生快速输入历史按 JSONL 追加保存：Linux 为 `$XDG_DATA_HOME/devtools/quick-input-history.jsonl`（默认 `~/.local/share/devtools/quick-input-history.jsonl`），Windows 为 `%LOCALAPPDATA%\devtools\quick-input-history.jsonl`。确认后的文本只写入系统剪贴板，不再尝试恢复原窗口焦点或模拟键盘输入，因此 Wayland、X11 与 Windows 使用相同的简单行为，也不需要键盘注入授权。
 
 Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“设置 / 重启 / 退出”，左键打开独立启动器。设置页同样由 Vue 3 + Naive UI WebView 渲染，可控制：
 
@@ -178,7 +178,6 @@ Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“�
 - fnm + Node.js 26 + pnpm 11
 - `libgtk-3-dev`、`libwebkit2gtk-4.1-dev`（Wry / WebKitGTK 4.1 编译依赖）
 - `wl-clipboard`（`wl-copy`）、`notify-send`
-- `xdotool`（仅 X11 原生快速输入回填）
 - `php`（可选；仅用于启用 PHP 格式转换）
 - `tesseract-ocr`、`tesseract-ocr-eng`、`tesseract-ocr-chi-sim`（可选；OCR）
 - `zbar-tools`（可选；条形码和二维码识别）
@@ -188,7 +187,7 @@ Worker 使用系统托盘/Windows 通知区域图标常驻，菜单固定为“�
 
 ```bash
 sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev \
-  xdotool tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim zbar-tools \
+  tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim zbar-tools \
   libimage-exiftool-perl
 git clone <this-repo> krunner-plugin
 cd krunner-plugin
@@ -312,7 +311,7 @@ devtools-workerd
 ├── IPC                  稳定 JSON 协议与业务工具路由
 └── Platform
     ├── Linux            GTK / WebKitGTK、StatusNotifierItem、D-Bus、门户
-    └── Windows          Win32 / WebView2、通知区域、SendInput
+    └── Windows          Win32 / WebView2、通知区域、系统剪贴板
 ```
 
 匹配结构在总线上的签名（来自 `/usr/share/dbus-1/interfaces/kf6_org.kde.krunner1.xml`）：
@@ -351,6 +350,7 @@ a(sssida{sv})
 | `assets/org.kde.devtools.desktop` | KRunner DBus-runner 元数据（`X-Plasma-API=DBus2` 等） |
 | `assets/*.service` | Runner / Worker D-Bus 激活服务模板 |
 | `assets/org.loveyu.DevTools.desktop.in` | 无 KRunner 时使用的独立应用菜单入口 |
+| `assets/org.loveyu.DevTools.svg` | DevTools 主窗口、应用菜单、KRunner 与 Linux 托盘共用图标 |
 | `install.sh` | 编译 + 安装 + 重启 KRunner |
 
 ## 第三方开源项目与代码来源
@@ -373,7 +373,7 @@ a(sssida{sv})
 
 数据转换、OCR 与条码识别的功能范围和交互迁移自内部 `tools-console` 项目，其中数据转换参考路径为 `/data/code/private/tools-console/src/views/helper/data-convert`。本项目没有照搬旧后端：浏览器可完成的转换已用 TypeScript 重新实现；OCR、条码识别和可选 PHP 格式通过受限 Rust 子进程桥接；依赖后端且非必要、存在已知问题或本机缺少对应程序的逻辑没有迁移。
 
-图片压缩、图片编辑、图片水印、加解密和元数据页面底部均提供对应原项目入口。Tesseract OCR、ZBar、ExifTool、PHP CLI、`xdotool` 等属于用户环境中的可选外部程序，Worker 仅以受限子进程调用，不把它们的代码链接或打包进本项目。
+图片压缩、图片编辑、图片水印、加解密和元数据页面底部均提供对应原项目入口。Tesseract OCR、ZBar、ExifTool、PHP CLI 等属于用户环境中的可选外部程序，Worker 仅以受限子进程调用，不把它们的代码链接或打包进本项目。
 
 ## 开发与调试
 

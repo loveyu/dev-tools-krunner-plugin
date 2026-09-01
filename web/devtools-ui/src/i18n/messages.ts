@@ -181,7 +181,7 @@ const simplifiedChinese: Record<string, string> = {
     '↑↓ 选择 · Enter 打开 · Esc 关闭；直接输入 JSON 会自动识别。',
   'settings.quickInput.title': '原生快速输入',
   'settings.quickInput.description':
-    '在指针所在屏幕唤出原生输入框，Enter 后回填原应用，并保存 JSONL 历史；默认关闭。',
+    '在指针所在屏幕唤出原生输入框；Enter 后复制到剪贴板并关闭，历史以 JSONL 保存；默认关闭。',
   'common.width': '宽度',
   'common.height': '高度',
   'watermark.title': '图片水印',
@@ -446,7 +446,7 @@ const traditionalChinese: Record<string, string> = {
     '↑↓ 選擇 · Enter 開啟 · Esc 關閉；直接輸入 JSON 會自動識別。',
   'settings.quickInput.title': '原生快速輸入',
   'settings.quickInput.description':
-    '在指標所在螢幕叫出原生輸入框，Enter 後回填原應用程式，並儲存 JSONL 歷史；預設關閉。',
+    '在指標所在螢幕叫出原生輸入框；Enter 後複製到剪貼簿並關閉，歷史以 JSONL 儲存；預設關閉。',
   'common.width': '寬度',
   'common.height': '高度',
   'watermark.title': '圖片浮水印',
@@ -724,7 +724,7 @@ const english: Record<string, string> = {
     '↑↓ Select · Enter Open · Esc Close. Direct JSON input is detected automatically.',
   'settings.quickInput.title': 'Native quick input',
   'settings.quickInput.description':
-    "Open a native input box on the pointer's display, insert with Enter, and save JSONL history. Off by default.",
+    "Open a native input box on the pointer's display; Enter copies to the clipboard and closes it, with history saved as JSONL. Off by default.",
   'common.width': 'Width',
   'common.height': 'Height',
   'watermark.title': 'Image Watermark',

@@ -91,6 +91,12 @@ mkdir -p "$KRUNNER_DIR"
 install -m 0644 "$SCRIPT_DIR/assets/org.kde.devtools.desktop" "$KRUNNER_DIR/"
 echo "==> krunner plugin -> $KRUNNER_DIR/org.kde.devtools.desktop"
 
+# --- DevTools application icon -------------------------------------------
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+mkdir -p "$ICON_DIR"
+install -m 0644 "$SCRIPT_DIR/assets/org.loveyu.DevTools.svg" "$ICON_DIR/"
+echo "==> application icon -> $ICON_DIR/org.loveyu.DevTools.svg"
+
 # --- Standalone application launcher (works without KRunner) --------------
 APPLICATIONS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPLICATIONS_DIR"
@@ -99,6 +105,12 @@ sed "s|@WORKER_EXEC@|$INSTALL_DIR/devtools-workerd|g" \
     > "$APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
 chmod 0644 "$APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
 echo "==> application launcher -> $APPLICATIONS_DIR/org.loveyu.DevTools.desktop"
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+fi
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+fi
 
 # --- D-Bus activation service (substitute the absolute binary path) -------
 DBUS_DIR="$HOME/.local/share/dbus-1/services"
