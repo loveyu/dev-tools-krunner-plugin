@@ -122,6 +122,9 @@ function handleDrop(event: DragEvent): void {
 }
 
 async function selectFile(file: File): Promise<void> {
+  // 压缩进行中换图会让本函数的 finally 提前复位 busy、其尾部再次压缩，
+  // 形成两次并发；与 runCompression 相同入口拦截。
+  if (busy.value) return;
   error.value = null;
   const validationError = validateCompressionFileMetadata(file.type, file.size);
   if (validationError !== null) {

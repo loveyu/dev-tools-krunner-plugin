@@ -5,6 +5,7 @@ import { NAlert, NCard, NEmpty, NTag, useMessage } from 'naive-ui';
 import WatermarkSettingsPanel from '../components/WatermarkSettingsPanel.vue';
 import { useI18n } from '../i18n/runtime';
 import { validateImageMetadata, SUPPORTED_IMAGE_TYPES } from '../tools/media/image';
+import { downloadBlob } from '../tools/media/download';
 import {
   DEFAULT_TIME_TEMPLATE,
   WATERMARKER_PROJECT_URL,
@@ -220,21 +221,6 @@ async function saveImage(): Promise<void> {
   }
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-  } finally {
-    // 给 WebView 下载处理器留出启动时间，再回收 blob URL。
-    window.setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 10_000);
-  }
-}
-
 function copyPreview(): void {
   const canvas = previewCanvasHost.value?.querySelector('canvas');
   if (canvas === null || canvas === undefined) return;
@@ -259,7 +245,7 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob === null) {
-        reject(new Error('watermark.errors.imageEncodeFailed'));
+        reject(new Error('errors.imageEncodeFailed'));
         return;
       }
       resolve(blob);
