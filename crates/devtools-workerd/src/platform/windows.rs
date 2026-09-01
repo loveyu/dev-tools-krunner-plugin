@@ -10,6 +10,8 @@ use std::thread;
 use std::time::Duration;
 
 use devtools_core::{LanguageMode, Settings};
+use global_hotkey::hotkey::HotKey;
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use tao::event_loop::EventLoopProxy;
 use tao::window::Window;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
@@ -120,6 +122,46 @@ fn pick_windows_color(request_id: &str) -> ColorPickResult {
 
 pub fn ensure_display_available() -> Result<(), &'static str> {
     Ok(())
+}
+
+/// Windows 全局快捷键后端；注册操作仍由 Win32 消息循环所在主线程发起。
+pub struct GlobalShortcutBackend {
+    manager: GlobalHotKeyManager,
+    registered: Vec<HotKey>,
+}
+
+impl GlobalShortcutBackend {
+    pub fn new(
+        handler: impl Fn(GlobalHotKeyEvent) + Send + Sync + 'static,
+    ) -> Result<Self, String> {
+        GlobalHotKeyEvent::set_event_handler(Some(handler));
+        Ok(Self {
+            manager: GlobalHotKeyManager::new().map_err(|error| error.to_string())?,
+            registered: Vec::new(),
+        })
+    }
+
+    pub fn replace(&mut self, next: &[HotKey]) -> Result<(), String> {
+        if next == self.registered {
+            return Ok(());
+        }
+        let previous = self.registered.clone();
+        if !previous.is_empty() {
+            self.manager
+                .unregister_all(&previous)
+                .map_err(|error| error.to_string())?;
+        }
+        if !next.is_empty() {
+            if let Err(error) = self.manager.register_all(next) {
+                if !previous.is_empty() {
+                    let _ = self.manager.register_all(&previous);
+                }
+                return Err(error.to_string());
+            }
+        }
+        self.registered = next.to_vec();
+        Ok(())
+    }
 }
 
 pub fn restart(executable: &Path) {

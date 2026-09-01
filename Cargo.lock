@@ -626,6 +626,7 @@ dependencies = [
  "base64",
  "devtools-core",
  "devtools-tools",
+ "futures",
  "gtk",
  "ksni",
  "revelo",

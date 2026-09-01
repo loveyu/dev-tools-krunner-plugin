@@ -1,17 +1,17 @@
 use global_hotkey::hotkey::HotKey;
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use global_hotkey::HotKeyState;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tao::event_loop::EventLoopProxy;
 
-use crate::UserEvent;
+use crate::{platform, UserEvent};
 use devtools_core::Settings;
 
 const NO_HOTKEY: u32 = u32::MAX;
 
 /// 跨平台全局快捷键管理器；Wayland 通过 XDG GlobalShortcuts portal 注册。
 pub struct ShortcutManager {
-    manager: GlobalHotKeyManager,
+    manager: platform::GlobalShortcutBackend,
     registered: Vec<HotKey>,
     launcher_id: Arc<AtomicU32>,
     quick_input_id: Arc<AtomicU32>,
@@ -24,7 +24,7 @@ impl ShortcutManager {
         let quick_input_id = Arc::new(AtomicU32::new(NO_HOTKEY));
         let event_launcher_id = Arc::clone(&launcher_id);
         let event_quick_input_id = Arc::clone(&quick_input_id);
-        GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
+        let manager = platform::GlobalShortcutBackend::new(move |event| {
             if event.state() == HotKeyState::Pressed {
                 if event.id() == event_launcher_id.load(Ordering::Acquire) {
                     let _ = proxy.send_event(UserEvent::OpenLauncher);
@@ -32,9 +32,9 @@ impl ShortcutManager {
                     let _ = proxy.send_event(UserEvent::OpenQuickInput);
                 }
             }
-        }));
+        })?;
         Ok(Self {
-            manager: GlobalHotKeyManager::new().map_err(|error| error.to_string())?,
+            manager,
             registered: Vec::new(),
             launcher_id,
             quick_input_id,
@@ -61,20 +61,17 @@ impl ShortcutManager {
             return Ok(());
         }
 
-        let previous = self.registered.clone();
-        if !previous.is_empty() {
-            self.manager
-                .unregister_all(&previous)
-                .map_err(|error| error.to_string())?;
-        }
-        if !next.is_empty() {
-            if let Err(error) = self.manager.register_all(&next) {
-                if !previous.is_empty() {
-                    let _ = self.manager.register_all(&previous);
-                }
-                return Err(error.to_string());
-            }
-        }
+        self.manager.replace(&next)?;
+        self.commit_registration(launcher, quick_input, next);
+        Ok(())
+    }
+
+    fn commit_registration(
+        &mut self,
+        launcher: Option<HotKey>,
+        quick_input: Option<HotKey>,
+        registered: Vec<HotKey>,
+    ) {
         self.launcher_id.store(
             launcher.map_or(NO_HOTKEY, |value| value.id()),
             Ordering::Release,
@@ -83,8 +80,7 @@ impl ShortcutManager {
             quick_input.map_or(NO_HOTKEY, |value| value.id()),
             Ordering::Release,
         );
-        self.registered = next;
-        Ok(())
+        self.registered = registered;
     }
 }
 
