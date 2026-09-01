@@ -279,6 +279,14 @@ function parseIni(text: string): DataValue {
     if (section !== null) {
       const name = section[1]?.trim() ?? '';
       assertSafeKey(name);
+      // 同名 section 再次出现时沿用既有对象（同 key 覆盖、新 key 追加），
+      // 与主流宽松 INI 解析器一致，避免前一段内容被静默丢弃。
+      // 顶层标量键与节名同名冲突时不沿用标量（无法继续挂键）。
+      const existing = root[name];
+      if (existing !== undefined && typeof existing === 'object' && existing !== null) {
+        current = existing as Record<string, DataValue>;
+        continue;
+      }
       const next: Record<string, DataValue> = Object.create(null) as Record<string, DataValue>;
       root[name] = next;
       current = next;

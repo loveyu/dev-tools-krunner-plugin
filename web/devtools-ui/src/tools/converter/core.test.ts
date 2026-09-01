@@ -105,6 +105,15 @@ describe('Web codecs', () => {
     }
   });
 
+  it('同名 INI section 再次出现时合并且不丢内容', () => {
+    const merged = parse(
+      'ini',
+      ['[owner]', 'name=devtools', 'stage=first', '[owner]', 'stage=second', 'extra=1'].join('\n'),
+    ) as Record<string, unknown>;
+
+    expect(merged['owner']).toEqual({ name: 'devtools', stage: 'second', extra: 1 });
+  });
+
   it('拒绝 XML DOCTYPE 和原型污染键', () => {
     expect(() => parse('xml', '<!DOCTYPE root><root/>')).toThrow(
       'convert.errors.xmlDoctypeForbidden',

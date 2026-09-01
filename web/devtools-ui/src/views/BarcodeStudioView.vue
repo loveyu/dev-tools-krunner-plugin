@@ -109,7 +109,7 @@ async function selectFile(file: File): Promise<void> {
     previewUrl.value = URL.createObjectURL(file);
     selectedImage.value = prepared;
     recognitionResult.value = null;
-    if (props.capability.available) await recognize();
+    if (props.capability.available) await recognize(sequence);
   } catch (caught: unknown) {
     if (sequence === selectSequence) {
       recognitionError.value = t(errorMessage(caught));
@@ -121,7 +121,10 @@ async function selectFile(file: File): Promise<void> {
   }
 }
 
-async function recognize(): Promise<void> {
+// 识别入口；`sequence` 仅由选图流程传入：识别飞行中又选了新图时，
+// 旧图的结果/错误直接丢弃、busy 也不提前复位，避免与预览短暂错位。
+// 按钮直接触发不传序号，结果始终写回。
+async function recognize(sequence?: number): Promise<void> {
   if (selectedImage.value === null) {
     message.warning(t('ui.chooseOrPasteAnImageFirst'));
     return;
@@ -130,18 +133,20 @@ async function recognize(): Promise<void> {
     message.error(t('ui.zbarBarcodeRecognitionIsUnavailableOnThisSystem'));
     return;
   }
+  const stale = (): boolean => sequence !== undefined && sequence !== selectSequence;
   recognitionBusy.value = true;
   recognitionError.value = null;
   try {
-    recognitionResult.value = await executeBarcode({
+    const result = await executeBarcode({
       ...selectedImage.value,
       operation: 'barcode',
       options: {},
     });
+    if (!stale()) recognitionResult.value = result;
   } catch (caught: unknown) {
-    recognitionError.value = t(errorMessage(caught));
+    if (!stale()) recognitionError.value = t(errorMessage(caught));
   } finally {
-    recognitionBusy.value = false;
+    if (!stale()) recognitionBusy.value = false;
   }
 }
 
@@ -234,7 +239,7 @@ function releasePreview(): void {
               :disabled="selectedImage === null || !capability.available"
               :loading="recognitionBusy"
               type="primary"
-              @click="recognize"
+              @click="() => recognize()"
             >
               {{ t('ui.recognizeCode') }}
             </NButton>
