@@ -71,6 +71,8 @@ pub struct RandQuery {
 
 /// 默认长度：当用户只输入 `rand` / `r` 而不带数字时使用。
 const DEFAULT_LENGTH: usize = 16;
+/// 随机字符串长度上限；解析与 Run 重建共用，防止伪造 match id 生成超大字符串。
+const MAX_LENGTH: usize = 256;
 
 /// 尝试从用户输入中解析出随机查询。不匹配时返回 `None`。
 ///
@@ -95,8 +97,10 @@ pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
         return None;
     };
 
-    // 跳过前缀后面的空白符，定位到第一个有效字符
-    let after = raw[prefix_len..].trim_start();
+    // 跳过前缀后面的空白符，定位到第一个有效字符。
+    // 小写串的前缀长度可能与原串的字节边界不重合（多字节字符小写变形），
+    // 用 get 安全切片，越界即视为不匹配，避免 D-Bus 回调里 panic。
+    let after = raw.get(prefix_len..)?.trim_start();
     // 仅前缀（如 "rand" / "r"）→ 默认 16 位字母数字
     if after.is_empty() {
         return Some(RandQuery {
@@ -125,7 +129,7 @@ pub fn parse_rand_query(query: &str) -> Option<RandQuery> {
         DEFAULT_LENGTH
     } else {
         let n = num_str.parse::<usize>().ok()?;
-        if n == 0 || n > 256 {
+        if n == 0 || n > MAX_LENGTH {
             return None;
         }
         n
@@ -191,7 +195,10 @@ pub fn value_for_rand_id(suffix: &str) -> Option<String> {
     let (mode_str, len_str) = suffix.rsplit_once(':')?;
     let mode = RandMode::from_str(mode_str)?;
     let length = len_str.parse::<usize>().ok()?;
-    Some(generate_rand(&mode, length))
+    // match id 来自总线调用方可伪造，Run 重建时同样执行解析侧的上限。
+    (1..=MAX_LENGTH)
+        .contains(&length)
+        .then(|| generate_rand(&mode, length))
 }
 
 #[cfg(test)]
@@ -315,5 +322,13 @@ mod tests {
         let value = value_for_rand_id(suffix).unwrap();
         assert_eq!(value.len(), 16);
         assert!(value.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn forged_rand_ids_are_rejected_by_length_bound() {
+        // match id 来自总线调用方可伪造；超上限长度不得重新生成。
+        assert!(value_for_rand_id("alphanum:99999999").is_none());
+        assert!(value_for_rand_id("digits:0").is_none());
+        assert!(value_for_rand_id("alphanum:256").is_some());
     }
 }

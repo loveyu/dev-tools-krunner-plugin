@@ -9,6 +9,8 @@ use crate::platform;
 
 const HISTORY_FILE: &str = "quick-input-history.jsonl";
 const MAX_LOADED_HISTORY: usize = 500;
+/// 追加后超过该行数就把文件重写为最近 MAX_LOADED_HISTORY 条，防止无限增长。
+const COMPACTION_THRESHOLD: usize = MAX_LOADED_HISTORY * 4;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,7 +54,34 @@ impl HistoryStore {
             .append(true)
             .open(&self.path)?;
         serde_json::to_writer(&mut file, &record)?;
-        writeln!(file)
+        writeln!(file)?;
+        drop(file);
+        self.compact_if_needed()
+    }
+
+    /// 追加后超过阈值时把文件重写为最近 MAX_LOADED_HISTORY 条。
+    /// 历史只增不删会让文件随长期使用无限膨胀，且每次启动都要全量解析。
+    fn compact_if_needed(&self) -> io::Result<()> {
+        let Ok(file) = File::open(&self.path) else {
+            return Ok(());
+        };
+        let lines = BufReader::new(file)
+            .lines()
+            .collect::<Result<Vec<_>, _>>()?;
+        if lines.len() < COMPACTION_THRESHOLD {
+            return Ok(());
+        }
+        let retained = &lines[lines.len() - MAX_LOADED_HISTORY..];
+        let temp_path = self.path.with_extension("tmp");
+        let mut writer = io::BufWriter::new(File::create(&temp_path)?);
+        for line in retained {
+            writeln!(writer, "{line}")?;
+        }
+        writer.flush()?;
+        let file = writer.into_inner()?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temp_path, &self.path)
     }
 
     pub fn load(&self) -> Vec<String> {
@@ -122,5 +151,27 @@ mod tests {
         let values = store.load();
         assert_eq!(values.len(), MAX_LOADED_HISTORY);
         assert_eq!(values.first().map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn history_is_compacted_after_crossing_the_threshold() {
+        let directory = tempdir().expect("应创建临时目录");
+        let store = HistoryStore::new(directory.path().join(HISTORY_FILE));
+        for index in 0..COMPACTION_THRESHOLD - 1 {
+            store.append(&index.to_string()).expect("应写入历史记录");
+        }
+        let line_count = || {
+            fs::read_to_string(store.path())
+                .expect("应读取历史文件")
+                .lines()
+                .count()
+        };
+        // 未达阈值不触发重写。
+        assert_eq!(line_count(), COMPACTION_THRESHOLD - 1);
+        // 越过阈值的一条追加把文件压回 MAX_LOADED_HISTORY 条最近记录。
+        store.append("latest").expect("应写入并压实");
+        assert_eq!(line_count(), MAX_LOADED_HISTORY);
+        let values = store.load();
+        assert_eq!(values.last().map(String::as_str), Some("latest"));
     }
 }

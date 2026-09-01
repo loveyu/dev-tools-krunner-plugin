@@ -34,6 +34,12 @@ impl QuickInputWindow {
         window.set_default_size(560, 56);
         window.set_resizable(true);
         window.set_position(gtk::WindowPosition::Mouse);
+        // X11 下窗口管理器仍可关闭 utility 窗口（Alt+F4）；拦截删除事件改为隐藏，
+        // 避免控件销毁后再次唤出时对已销毁 widget 调用 show/present。
+        window.connect_delete_event(|window, _| {
+            window.hide();
+            gtk::glib::Propagation::Stop
+        });
 
         let entry = gtk::Entry::new();
         // GtkEntry 默认会根据当前文本自动计算自然宽度。固定其尺寸请求后再用 hexpand

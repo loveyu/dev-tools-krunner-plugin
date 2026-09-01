@@ -212,10 +212,7 @@ impl Application {
                                 }
                             } else {
                                 windows.send_metadata_processing_result(
-                                    &MetadataProcessingResult::error(
-                                        request_id,
-                                        "file selection was cancelled",
-                                    ),
+                                    &MetadataProcessingResult::cancelled(request_id),
                                 );
                             }
                         }

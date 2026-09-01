@@ -138,7 +138,9 @@ pub fn parse_uuid_query(query: &str) -> Option<UuidQuery> {
         return None;
     };
 
-    let after = raw[prefix_len..].trim();
+    // 小写串的前缀长度可能与原串的字节边界不重合（多字节字符小写变形），
+    // 用 get 安全切片，越界即视为不匹配，避免 D-Bus 回调里 panic。
+    let after = raw.get(prefix_len..)?.trim();
 
     parse_version_format(after).or_else(|| {
         // 无修饰符：全大写 → v4 Upper，否则 v4 Standard

@@ -61,12 +61,12 @@ pub fn copy_text(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 用系统默认浏览器打开外部 http(s) 链接。
-/// WebView 以内嵌 HTML 加载，无法自行打开新窗口，必须交给桌面打开。
+/// 用系统默认应用打开外部链接：http(s) 交给默认浏览器，mailto 交给默认邮件客户端。
+/// WebView 以内嵌 HTML 加载，无法自行打开新窗口，必须交给桌面处理。
 pub fn open_external_url(url: &str) -> Result<(), String> {
     let parsed = url::Url::parse(url).map_err(|error| format!("invalid url: {error}"))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(format!("refused to open non-http url: {url}"));
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+        return Err(format!("refused to open external url: {url}"));
     }
     Command::new("xdg-open")
         .arg(url)

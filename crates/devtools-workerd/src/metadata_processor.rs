@@ -15,9 +15,13 @@ use wait_timeout::ChildExt;
 use crate::UserEvent;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+/// 子进程输出上限，与其余处理器统一为 8 MiB。
+const MAX_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_ENCODED_IMAGE_BYTES: usize = (MAX_IMAGE_BYTES * 4 / 3) + 4;
+/// 路径入口的文件大小上限：元数据解析只读文件头，正常媒体远小于此，
+/// 仅用于拦截误选磁盘映像等极端文件拖垮进程内解析。
+const MAX_PATH_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +37,8 @@ pub struct MetadataProcessingResult {
     request_id: String,
     result: Option<MetadataDocument>,
     error: Option<String>,
+    /// 用户主动取消（如关闭文件选择框）；前端据此静默收场而不是报错。
+    cancelled: bool,
 }
 
 impl MetadataProcessingResult {
@@ -41,6 +47,16 @@ impl MetadataProcessingResult {
             request_id,
             result: None,
             error: Some(error.into()),
+            cancelled: false,
+        }
+    }
+
+    pub fn cancelled(request_id: String) -> Self {
+        Self {
+            request_id,
+            result: None,
+            error: None,
+            cancelled: true,
         }
     }
 
@@ -49,6 +65,7 @@ impl MetadataProcessingResult {
             request_id,
             result: Some(result),
             error: None,
+            cancelled: false,
         }
     }
 }
@@ -126,6 +143,15 @@ impl MetadataProcessor {
         }
         if !path.is_file() {
             return Err("selected metadata path is not a regular file".to_owned());
+        }
+        let file_size = path
+            .metadata()
+            .map_err(|error| format!("failed to read selected file metadata: {error}"))?
+            .len();
+        if file_size > MAX_PATH_FILE_BYTES {
+            return Err(format!(
+                "selected file is too large ({file_size} bytes; limit {MAX_PATH_FILE_BYTES})"
+            ));
         }
         self.sender
             .send(MetadataJob {

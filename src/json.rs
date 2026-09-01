@@ -66,11 +66,14 @@ impl InlineContextCache {
     }
 }
 
-/// 优先识别 KRunner 输入框中的结构化 JSON，再回落到 `j/json + 剪贴板`。
-pub fn match_for_query(query: &str, cache: &mut InlineContextCache) -> Option<KMatch> {
-    if let Some(item) = match_for_inline_query(query, cache) {
-        return Some(item);
-    }
+/// 直接输入的 JSON 识别：只操作内存缓存，可在缓存锁内安全调用。
+/// 调用方随后应在锁外尝试剪贴板入口（`match_clipboard`）。
+pub fn match_inline(query: &str, cache: &mut InlineContextCache) -> Option<KMatch> {
+    match_for_inline_query(query, cache)
+}
+
+/// 剪贴板入口：走子进程读取，调用方不得持有缓存锁，避免锁内等待子进程。
+pub fn match_clipboard(query: &str) -> Option<KMatch> {
     if !matches_query(query) {
         return None;
     }

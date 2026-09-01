@@ -7,7 +7,7 @@ use std::ptr::{null, null_mut};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use devtools_core::{LanguageMode, Settings};
 use global_hotkey::hotkey::HotKey;
@@ -16,13 +16,18 @@ use tao::event_loop::{EventLoopBuilder, EventLoopProxy};
 use tao::window::Window;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM,
+};
 use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
 use windows_sys::Win32::Graphics::Gdi::{
     GetDC, GetMonitorInfoW, GetPixel, MonitorFromPoint, ReleaseDC, MONITORINFO,
     MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, OpenEventW, SetEvent, WaitForMultipleObjects,
+};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SetFocus, VK_DOWN, VK_ESCAPE, VK_LBUTTON, VK_RETURN, VK_UP,
 };
@@ -73,12 +78,12 @@ pub fn copy_text(text: &str) -> Result<(), String> {
     clipboard.set_text(text).map_err(|error| error.to_string())
 }
 
-/// 用系统默认浏览器打开外部 http(s) 链接。
+/// 用系统默认应用打开外部链接：http(s) 交给默认浏览器，mailto 交给默认邮件客户端。
 /// WebView 以自定义协议加载，无法自行打开新窗口，必须交给 Shell 打开。
 pub fn open_external_url(url: &str) -> Result<(), String> {
     let parsed = url::Url::parse(url).map_err(|error| format!("invalid url: {error}"))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(format!("refused to open non-http url: {url}"));
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+        return Err(format!("refused to open external url: {url}"));
     }
     Command::new("explorer")
         .arg(url)
@@ -108,11 +113,22 @@ pub fn start_screen_color_picker(request_id: String, proxy: EventLoopProxy<UserE
     });
 }
 
+/// 取色等待的总上限：用户切走或遗忘时按取消收场并回收线程，
+/// 否则 10ms 轮询线程会永久自旋，多次触发后不断累积。
+const PICK_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
+
 fn pick_windows_color(request_id: &str) -> ColorPickResult {
+    let deadline = Instant::now() + PICK_TOTAL_TIMEOUT;
     while unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0 {
+        if Instant::now() >= deadline {
+            return ColorPickResult::cancelled(request_id.to_owned());
+        }
         thread::sleep(Duration::from_millis(10));
     }
     loop {
+        if Instant::now() >= deadline {
+            return ColorPickResult::cancelled(request_id.to_owned());
+        }
         if unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0 {
             return ColorPickResult::cancelled(request_id.to_owned());
         }
@@ -602,18 +618,114 @@ fn create_icon() -> Result<Icon, String> {
     .map_err(|error| error.to_string())
 }
 
-pub struct IpcGuard;
+/// Windows 没有 session D-Bus，单实例转发用命名事件实现：
+/// 已就绪的 Worker 在 `Local\DevTools.Open<Method>` 上等待，第二个进程
+/// `OpenEventW + SetEvent` 后直接退出，事件由这里的后台线程转投主循环。
+const WORKER_EVENT_PREFIX: &str = "Local\\DevTools.Open";
+/// `OpenEventW` 所需的最小访问权（EVENT_MODIFY_STATE，仅用于 SetEvent）。
+const EVENT_MODIFY_STATE_ACCESS: u32 = 0x0002;
+const WAIT_OBJECT_0: u32 = 0;
+const WAIT_INFINITE: u32 = u32::MAX;
+/// 与 Linux 侧 WorkerService 支持转发的方法一一对应。
+const WORKER_FORWARD_METHODS: [&str; 3] = ["OpenSettings", "OpenLauncher", "OpenQuickInput"];
+
+fn worker_event_name(method: &str) -> Vec<u16> {
+    format!("{WORKER_EVENT_PREFIX}{method}")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+/// HANDLE 是裸指针、默认不跨线程；命名事件句柄只用于等待/置位/关闭，
+/// 由单一后台线程持有，包一层声明 Send 以便移入等待线程。
+struct SendHandle(HANDLE);
+
+unsafe impl Send for SendHandle {}
+
+pub struct IpcGuard {
+    shutdown: HANDLE,
+}
+
+impl Drop for IpcGuard {
+    fn drop(&mut self) {
+        // 唤醒等待线程让其自行退出并关闭全部句柄。
+        unsafe { SetEvent(self.shutdown) };
+    }
+}
 
 pub fn start_ipc(
-    _proxy: EventLoopProxy<UserEvent>,
+    proxy: EventLoopProxy<UserEvent>,
     registry: Arc<ToolRegistry>,
     _webview_ready: Arc<AtomicBool>,
 ) -> Result<IpcGuard, Box<dyn std::error::Error>> {
     // 保留与 Linux 相同的工具路由契约，后续可直接接入 Windows 本地 IPC。
     let _tool_router = (registry, crate::ipc::tool_event);
-    Ok(IpcGuard)
+
+    let mut handles: Vec<HANDLE> = Vec::new();
+    for method in WORKER_FORWARD_METHODS {
+        let name = worker_event_name(method);
+        let handle = unsafe { CreateEventW(std::ptr::null(), 0, 0, name.as_ptr()) };
+        if handle.is_null() {
+            for created in &handles {
+                unsafe { CloseHandle(*created) };
+            }
+            return Err(format!(
+                "failed to create worker named event for {method}: {}",
+                unsafe { GetLastError() }
+            )
+            .into());
+        }
+        handles.push(handle);
+    }
+    // 手动重置的关机事件：Drop 时 SetEvent 一次即可唤醒等待线程退出。
+    let shutdown = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+    if shutdown.is_null() {
+        for handle in &handles {
+            unsafe { CloseHandle(*handle) };
+        }
+        return Err("failed to create worker shutdown event".into());
+    }
+    let mut wait_handles: Vec<SendHandle> = handles.into_iter().map(SendHandle).collect();
+    wait_handles.push(SendHandle(shutdown));
+    let total = wait_handles.len() as u32;
+    thread::spawn(move || {
+        let raw: Vec<HANDLE> = wait_handles.iter().map(|handle| handle.0).collect();
+        loop {
+            let index = unsafe { WaitForMultipleObjects(total, raw.as_ptr(), 0, WAIT_INFINITE) };
+            if !(WAIT_OBJECT_0..WAIT_OBJECT_0 + total).contains(&index) {
+                break;
+            }
+            let slot = (index - WAIT_OBJECT_0) as usize;
+            if slot == wait_handles.len() - 1 {
+                break;
+            }
+            let event = match slot {
+                0 => UserEvent::OpenSettings,
+                1 => UserEvent::OpenLauncher,
+                _ => UserEvent::OpenQuickInput,
+            };
+            if proxy.send_event(event).is_err() {
+                break;
+            }
+        }
+        for handle in wait_handles {
+            unsafe { CloseHandle(handle.0) };
+        }
+    });
+    Ok(IpcGuard { shutdown })
 }
 
-pub fn request_existing_worker(_method: &str) -> bool {
-    false
+pub fn request_existing_worker(method: &str) -> bool {
+    if !WORKER_FORWARD_METHODS.contains(&method) {
+        return false;
+    }
+    let name = worker_event_name(method);
+    // 打开失败说明没有已就绪的旧实例（或其服务尚未创建），由调用方正常启动。
+    let handle = unsafe { OpenEventW(EVENT_MODIFY_STATE_ACCESS, 0, name.as_ptr()) };
+    if handle.is_null() {
+        return false;
+    }
+    let signaled = unsafe { SetEvent(handle) } != 0;
+    unsafe { CloseHandle(handle) };
+    signaled
 }

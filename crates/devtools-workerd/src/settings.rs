@@ -1,5 +1,5 @@
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use devtools_core::Settings;
@@ -70,7 +70,7 @@ impl SettingsStore {
         let directory = path.parent().expect("设置文件必须有父目录");
         fs::create_dir_all(directory)?;
         let contents = serde_json::to_string_pretty(&settings).expect("Settings 序列化不会失败");
-        fs::write(path, format!("{contents}\n"))
+        write_atomically(&path, &format!("{contents}\n"))
     }
 
     fn settings_path(&self) -> PathBuf {
@@ -80,6 +80,22 @@ impl SettingsStore {
     fn autostart_path(&self) -> PathBuf {
         platform::autostart_path(&self.config_root)
     }
+}
+
+/// 先写同目录临时文件并落盘，再 rename 原子替换。
+/// 直接覆盖在写入中途崩溃/断电会留下截断的 JSON，下次启动将静默回退默认设置，
+/// 用户全部配置丢失；rename 在同一文件系统上是原子操作，不会出现半新半旧。
+fn write_atomically(path: &Path, contents: &str) -> io::Result<()> {
+    let temp_path = path.with_extension("tmp");
+    let mut file = File::create(&temp_path)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

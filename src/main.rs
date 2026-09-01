@@ -166,11 +166,14 @@ impl DevTools {
     /// 优先识别直接输入的 JSON，其次处理 JSON 剪贴板命令、UUID、随机字符串，
     /// 最后回落到时间查询。
     fn Match(&self, query: &str) -> Vec<KMatch> {
+        // 缓存锁只覆盖纯内存的 inline 识别；剪贴板读取走子进程，必须在锁外执行，
+        // 否则一次 2s 超时的读取会把并发的 Run（打开工作台）一起拖住。
         let json_item = self
             .inline_json
             .lock()
             .ok()
-            .and_then(|mut cache| json::match_for_query(query, &mut cache));
+            .and_then(|mut cache| json::match_inline(query, &mut cache))
+            .or_else(|| json::match_clipboard(query));
         if let Some(item) = json_item {
             // 直接输入可能包含敏感正文，日志仅记录命中类型，不记录 query。
             eprintln!("devtools-runner: Match -> 1 json item");
@@ -236,7 +239,11 @@ impl DevTools {
         }
         match value_for_id(match_id) {
             Some(value) => {
-                eprintln!("devtools-runner: copy '{match_id}' -> {value}");
+                // 生成的值会进剪贴板与桌面通知，日志只记录长度，避免值重复落盘。
+                eprintln!(
+                    "devtools-runner: copy '{match_id}' -> <{} chars>",
+                    value.len()
+                );
                 copy_to_clipboard(&value);
                 notify("Copied", &value);
                 Ok(())
